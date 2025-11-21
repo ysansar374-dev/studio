@@ -220,7 +220,6 @@ export function RaceScreen({
   const loop = useCallback(() => {
     if (!gameActive.current) return;
 
-    // Physics update
     const p = phys.current;
     const i = inputs.current;
     
@@ -230,12 +229,11 @@ export function RaceScreen({
             currentDrsActive = true;
             return { active: true, charge: Math.max(0, prev.charge - 0.5) };
         }
-        currentDrsActive = false;
         return { active: false, charge: Math.min(100, prev.charge + 0.1) };
     });
 
-    let currentMaxSpeed = currentDrsActive ? MAX_SPEED_DRS : MAX_SPEED_NORMAL;
-    let currentAccel = currentDrsActive ? ACCELERATION * 1.5 : ACCELERATION;
+    const currentMaxSpeed = drsState.active ? MAX_SPEED_DRS : MAX_SPEED_NORMAL;
+    const currentAccel = drsState.active ? ACCELERATION * 1.5 : ACCELERATION;
 
     if (i.gas) p.speed += currentAccel;
     else p.speed *= FRICTION_ROAD;
@@ -267,6 +265,24 @@ export function RaceScreen({
             p.x -= dx * 0.1;
             p.y -= dy * 0.1;
             p.collision = true;
+            createSparks(p.x - dx/2, p.y - dy/2, 15);
+        }
+    });
+
+    // Collision with opponents
+    Object.values(opponents).forEach(opp => {
+        if (!opp.x || !opp.y) return;
+        const dx = p.x - opp.x;
+        const dy = p.y - opp.y;
+        const distance = Math.sqrt(dx*dx + dy*dy);
+        if (distance < 80) { // Collision threshold: 80px
+            p.speed *= 0.85; // Player loses some speed
+            p.collision = true;
+            
+            // Apply a small bounce effect
+            p.x -= dx * 0.1;
+            p.y -= dy * 0.1;
+            
             createSparks(p.x - dx/2, p.y - dy/2, 15);
         }
     });
@@ -342,7 +358,7 @@ export function RaceScreen({
     
     draw();
     requestRef.current = requestAnimationFrame(loop);
-  }, [draw, getRoadCurve, playerCar.name, opponents, setGameState, syncMultiplayer]);
+  }, [draw, getRoadCurve, playerCar.name, opponents, setGameState, syncMultiplayer, drsState.active]);
 
 
   const addBot = () => {
@@ -475,5 +491,7 @@ export function RaceScreen({
   );
 
 }
+
+    
 
     
