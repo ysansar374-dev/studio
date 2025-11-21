@@ -306,7 +306,7 @@ export default function VelocityLobbyClient() {
       lap: currentLapInfo.current,
       lastSeen: serverTimestamp()
     }).catch(e => console.warn("Sync error:", e));
-  }, [user, lobbyCode, getPlayerDocRef]);
+  }, [user, lobbyCode, getPlayerDocRef, getFirebase, config.appId]);
 
 
   // --- Render ---
