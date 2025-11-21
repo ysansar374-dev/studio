@@ -224,16 +224,20 @@ export function RaceScreen({
     const i = inputs.current;
     
     let currentDrsActive = false;
+    let newDrsCharge: number;
+
     setDrsState(prev => {
         if (i.drs && prev.charge > 0) {
             currentDrsActive = true;
-            return { active: true, charge: Math.max(0, prev.charge - 0.5) };
+            newDrsCharge = Math.max(0, prev.charge - 0.5);
+            return { active: true, charge: newDrsCharge };
         }
-        return { active: false, charge: Math.min(100, prev.charge + 0.1) };
+        newDrsCharge = Math.min(100, prev.charge + 0.1);
+        return { active: false, charge: newDrsCharge };
     });
 
-    const currentMaxSpeed = drsState.active ? MAX_SPEED_DRS : MAX_SPEED_NORMAL;
-    const currentAccel = drsState.active ? ACCELERATION * 1.5 : ACCELERATION;
+    const currentMaxSpeed = currentDrsActive ? MAX_SPEED_DRS : MAX_SPEED_NORMAL;
+    const currentAccel = currentDrsActive ? ACCELERATION * 1.5 : ACCELERATION;
 
     if (i.gas) p.speed += currentAccel;
     else p.speed *= FRICTION_ROAD;
@@ -364,7 +368,7 @@ export function RaceScreen({
     
     draw();
     requestRef.current = requestAnimationFrame(loop);
-  }, [draw, getRoadCurve, playerCar.name, opponents, setGameState, syncMultiplayer, drsState.active]);
+  }, [draw, getRoadCurve, playerCar.name, opponents, setGameState, syncMultiplayer, setLapInfo]);
 
 
   const addBot = () => {
@@ -501,3 +505,4 @@ export function RaceScreen({
     
 
     
+
