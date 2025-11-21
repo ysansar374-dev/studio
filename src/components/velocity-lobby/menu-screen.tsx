@@ -30,7 +30,7 @@ const Controls = () => (
             <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm font-code text-muted-foreground">
                 <div className="flex justify-between border-b border-border/50 pb-1"><span>GAZ</span> <span className="text-foreground font-bold">W</span></div>
                 <div className="flex justify-between border-b border-border/50 pb-1"><span>FREN</span> <span className="text-foreground font-bold">S</span></div>
-                <div className="flex justify-between border-b border-border/50 pb-1"><span>YÖN</span> <span className="text-foreground font-bold">↑ / ↓</span></div>
+                <div className="flex justify-between border-b border-border/50 pb-1"><span>YÖN</span> <span className="text-foreground font-bold">A / D</span></div>
                 <div className="flex justify-between border-b border-border/50 pb-1"><span>DRS</span> <span className="text-foreground font-bold">SPACE</span></div>
                 <div className="flex justify-between border-b border-accent/30 pb-1 text-accent"><span>MÜHENDİS</span> <span className="text-foreground font-bold">R</span></div>
                 <div className="flex justify-between border-b border-border/50 pb-1"><span>ÇIKIŞ</span> <span className="text-foreground font-bold">ESC</span></div>

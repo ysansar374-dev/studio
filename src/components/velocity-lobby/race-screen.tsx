@@ -35,10 +35,11 @@ export function RaceScreen({
   const requestRef = useRef<number>();
   const gameActive = useRef(true);
   const phys = useRef({ x: 0, y: BASE_ROAD_Y, speed: 0, collision: false });
-  const inputs = useRef({ gas: false, brake: false, up: false, down: false, drs: false });
+  const inputs = useRef({ gas: false, brake: false, left: false, right: false, drs: false });
   const botsRef = useRef<Player[]>([]);
   const lastSync = useRef(0);
   const uiUpdateTimer = useRef(0);
+  const sparks = useRef<any[]>([]);
 
   const [drsState, setDrsState] = useState({ active: false, charge: 100 });
   const [leaderboardData, setLeaderboardData] = useState<Player[]>([]);
@@ -133,6 +134,16 @@ export function RaceScreen({
     ctx.restore();
   };
 
+  const drawSparks = useCallback((ctx: CanvasRenderingContext2D) => {
+    sparks.current = sparks.current.filter(spark => spark.alpha > 0);
+    sparks.current.forEach(spark => {
+      spark.x += spark.vx;
+      spark.y += spark.vy;
+      spark.alpha -= 0.05;
+      ctx.fillStyle = `rgba(255, 200, 100, ${spark.alpha})`;
+      ctx.fillRect(spark.x, spark.y, 3, 3);
+    });
+  }, []);
 
   const draw = useCallback(() => {
     const canvas = canvasRef.current;
@@ -164,7 +175,7 @@ export function RaceScreen({
       ctx.lineTo(sx + SEGMENT_WIDTH, y2 + 2000); ctx.lineTo(sx, y1 + 2000); ctx.fill();
       
       ctx.fillStyle = '#334155'; // Road
-      ctx.beginPath(); ctx.moveTo(sx, y1 - ROAD_WIDTH / 2); ctx.lineTo(sx + SEGMENT_WIDTH, y2 - ROAD_WIDTH / 2);
+      ctxbeginPath(); ctx.moveTo(sx, y1 - ROAD_WIDTH / 2); ctx.lineTo(sx + SEGMENT_WIDTH, y2 - ROAD_WIDTH / 2);
       ctx.lineTo(sx + SEGMENT_WIDTH, y2 + ROAD_WIDTH / 2); ctx.lineTo(sx, y1 + ROAD_WIDTH / 2); ctx.fill();
       
       ctx.fillStyle = Math.floor(worldX / 400) % 2 === 0 ? '#dc2626' : '#f8fafc';
@@ -184,10 +195,11 @@ export function RaceScreen({
       drawCar(ctx, opp.x || 0, opp.y || getRoadCurve(opp.x || 0), opp.color, opp.name, false, false);
     });
     drawCar(ctx, phys.current.x, phys.current.y, playerCar.color, "SEN", drsState.active, inputs.current.brake);
+    drawSparks(ctx);
     ctx.restore();
 
     drawMiniMap(ctx, width, height);
-  }, [playerCar.color, drsState.active, botsRef, opponents, getRoadCurve, drawCar]);
+  }, [playerCar.color, drsState.active, botsRef, opponents, getRoadCurve, drawCar, drawSparks]);
 
   const loop = useCallback(() => {
     if (!gameActive.current) return;
@@ -208,18 +220,28 @@ export function RaceScreen({
     if (i.gas) p.speed += currentAccel;
     else p.speed *= FRICTION_ROAD;
     if (i.brake) p.speed -= ACCELERATION * 3;
-
-    p.y += (i.down ? LANE_SPEED : 0) + (i.up ? -LANE_SPEED : 0);
+    
+    p.y += (i.right ? LANE_SPEED : 0) + (i.left ? -LANE_SPEED : 0);
 
     const roadCenterY = getRoadCurve(p.x);
     const carHalfHeight = 20;
     p.collision = false;
 
-    if (p.y < roadCenterY - ROAD_WIDTH / 2 + carHalfHeight) {
-      p.y = roadCenterY - ROAD_WIDTH / 2 + carHalfHeight; p.speed *= WALL_BOUNCE; p.collision = true;
-    }
-    if (p.y > roadCenterY + ROAD_WIDTH / 2 - carHalfHeight) {
-      p.y = roadCenterY + ROAD_WIDTH / 2 - carHalfHeight; p.speed *= WALL_BOUNCE; p.collision = true;
+    if (p.y < roadCenterY - ROAD_WIDTH / 2 + carHalfHeight || p.y > roadCenterY + ROAD_WIDTH / 2 - carHalfHeight) {
+      p.speed *= WALL_BOUNCE;
+      p.collision = true;
+      const sparkSide = p.y < roadCenterY ? -1 : 1;
+      p.y = roadCenterY + (sparkSide * (ROAD_WIDTH / 2 - carHalfHeight));
+
+      for(let k=0; k<10; k++) {
+        sparks.current.push({
+          x: p.x - 60,
+          y: p.y + (sparkSide * 15),
+          vx: p.speed * 0.2 - Math.random() * 5,
+          vy: (Math.random() - 0.5) * 5,
+          alpha: 1
+        });
+      }
     }
 
     p.speed = Math.max(0, Math.min(p.speed, currentMaxSpeed));
@@ -291,19 +313,21 @@ export function RaceScreen({
     handleResize();
 
     const hD = (e: KeyboardEvent) => {
-      if (e.key === 'w' || e.key === 'W') inputs.current.gas = true;
-      if (e.key === 's' || e.key === 'S') inputs.current.brake = true;
-      if (e.key === 'ArrowUp') inputs.current.up = true;
-      if (e.key === 'ArrowDown') inputs.current.down = true;
+      const key = e.key.toLowerCase();
+      if (key === 'w') inputs.current.gas = true;
+      if (key === 's') inputs.current.brake = true;
+      if (key === 'a') inputs.current.left = true;
+      if (key === 'd') inputs.current.right = true;
       if (e.key === ' ' || e.key === 'Shift') inputs.current.drs = true;
       if (e.key === 'Escape') quitRace();
-      if (e.key.toLowerCase() === 'r') triggerRaceEngineer(phys.current, drsState, lapInfo);
+      if (key === 'r') triggerRaceEngineer(phys.current, drsState, lapInfo);
     };
     const hU = (e: KeyboardEvent) => {
-      if (e.key === 'w' || e.key === 'W') inputs.current.gas = false;
-      if (e.key === 's' || e.key === 'S') inputs.current.brake = false;
-      if (e.key === 'ArrowUp') inputs.current.up = false;
-      if (e.key === 'ArrowDown') inputs.current.down = false;
+      const key = e.key.toLowerCase();
+      if (key === 'w') inputs.current.gas = false;
+      if (key === 's') inputs.current.brake = false;
+      if (key === 'a') inputs.current.left = false;
+      if (key === 'd') inputs.current.right = false;
       if (e.key === ' ' || e.key === 'Shift') inputs.current.drs = false;
     };
     window.addEventListener('keydown', hD);
