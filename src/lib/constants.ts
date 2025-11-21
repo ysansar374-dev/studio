@@ -9,7 +9,7 @@ export const WALL_BOUNCE = 0.6;
 export const LANE_SPEED = 5;
 export const TRACK_LENGTH = 15000; 
 
-export const ROAD_WIDTH = 340; 
+export const ROAD_WIDTH = 440; 
 export const BASE_ROAD_Y = 400;
 
 // --- TEAMS ---

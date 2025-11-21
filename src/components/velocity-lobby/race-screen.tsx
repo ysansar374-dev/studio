@@ -253,39 +253,45 @@ export function RaceScreen({
       createSparks(p.x - 60, p.y + (sparkSide * 15), 10);
     }
     
-    // Collision with bots
-    botsRef.current.forEach(bot => {
-        if (!bot.x || !bot.y) return;
-        const dx = p.x - bot.x;
-        const dy = p.y - bot.y;
-        const distance = Math.sqrt(dx * dx + dy * dy);
-        if (distance < 80) { // Collision threshold
-            p.speed *= 0.85;
-            (bot as any).speed *= 0.9;
-            p.x -= dx * 0.1;
-            p.y -= dy * 0.1;
-            p.collision = true;
-            createSparks(p.x - dx/2, p.y - dy/2, 15);
-        }
-    });
+    // Ghosting for the first 100 meters (1000 units of x)
+    if (p.x > 1000) {
+        // Collision with bots
+        botsRef.current.forEach(bot => {
+            if (!bot.x || !bot.y) return;
+            const dx = p.x - bot.x;
+            const dy = p.y - bot.y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+            if (distance < 80) { // Collision threshold
+                p.speed *= 0.85;
+                (bot as any).speed *= 0.9;
+                p.x -= dx * 0.1;
+                p.y -= dy * 0.1;
+                p.collision = true;
+                createSparks(p.x - dx/2, p.y - dy/2, 15);
+            }
+        });
 
-    // Collision with opponents
-    Object.values(opponents).forEach(opp => {
-        if (!opp.x || !opp.y) return;
-        const dx = p.x - opp.x;
-        const dy = p.y - opp.y;
-        const distance = Math.sqrt(dx*dx + dy*dy);
-        if (distance < 80) { // Collision threshold: 80px
-            p.speed *= 0.85; // Player loses some speed
-            p.collision = true;
-            
-            // Apply a small bounce effect
-            p.x -= dx * 0.1;
-            p.y -= dy * 0.1;
-            
-            createSparks(p.x - dx/2, p.y - dy/2, 15);
-        }
-    });
+        // Collision with opponents
+        Object.values(opponents).forEach(opp => {
+            if (!opp.x || !opp.y) return;
+            const dx = p.x - opp.x;
+            const dy = p.y - opp.y;
+            const distance = Math.sqrt(dx*dx + dy*dy);
+            if (distance < 80) { // Collision threshold: 80px
+                p.speed *= 0.85; // Player loses some speed
+                p.collision = true;
+                
+                // Apply a small bounce effect
+                const overlap = 80 - distance;
+                const pushX = (dx / distance) * overlap * 0.2;
+                const pushY = (dy / distance) * overlap * 0.2;
+                p.x += pushX;
+                p.y += pushY;
+                
+                createSparks(p.x - dx/2, p.y - dy/2, 15);
+            }
+        });
+    }
 
     p.speed = Math.max(0, Math.min(p.speed, currentMaxSpeed));
     p.x += p.speed;
