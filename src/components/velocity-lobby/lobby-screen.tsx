@@ -32,7 +32,7 @@ export function LobbyScreen({ lobbyCode, lobbyPlayers, isHost, startRaceByHost, 
 
   return (
     <div className="h-screen bg-background flex items-center justify-center text-foreground font-sans p-4">
-      <div className="bg-card p-8 rounded-2xl shadow-2xl max-w-2xl w-full border text-center">
+      <div className="bg-card p-8 rounded-2xl shadow-2xl max-w-4xl w-full border text-center">
         <Users className="mx-auto h-12 w-12 text-accent mb-4" />
         <h2 className="text-3xl font-black mb-2 font-headline">LOBİ BEKLEME SALONU</h2>
         <div className="flex justify-center items-center gap-4 mb-8 bg-background p-4 rounded-xl inline-block mx-auto border">
@@ -43,7 +43,7 @@ export function LobbyScreen({ lobbyCode, lobbyPlayers, isHost, startRaceByHost, 
           </Button>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-8">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 mb-8">
           {lobbyPlayers.map(p => (
             <div key={p.id} className="bg-muted p-3 rounded-lg flex items-center gap-3 border">
               <div className="w-8 h-8 rounded-full border-2" style={{ backgroundColor: p.color, borderColor: p.ready ? '#4ade80' : '#94a3b8' }}></div>
@@ -51,7 +51,7 @@ export function LobbyScreen({ lobbyCode, lobbyPlayers, isHost, startRaceByHost, 
               {p.id === userId && <span className="text-xs bg-accent text-accent-foreground px-2 py-0.5 rounded-full ml-auto font-bold">SEN</span>}
             </div>
           ))}
-          {[...Array(Math.max(0, 4 - lobbyPlayers.length))].map((_, i) => (
+          {[...Array(Math.max(0, 8 - lobbyPlayers.length))].map((_, i) => (
             <div key={i} className="bg-background/50 p-3 rounded-lg border-dashed border flex items-center justify-center text-muted-foreground">
               <User size={16} className="mr-2"/> Oyuncu bekleniyor...
             </div>
