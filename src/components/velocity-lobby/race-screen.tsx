@@ -342,7 +342,7 @@ export function RaceScreen({
     
     draw();
     requestRef.current = requestAnimationFrame(loop);
-  }, [draw, getRoadCurve, playerCar.name, opponents, setGameState, setLapInfo, syncMultiplayer]);
+  }, [draw, getRoadCurve, playerCar.name, opponents, setGameState, syncMultiplayer]);
 
 
   const addBot = () => {
@@ -473,5 +473,7 @@ export function RaceScreen({
       }
     </div>
   );
+
+}
 
     
