@@ -58,7 +58,7 @@ export default function VelocityLobbyClient() {
       return { app: appRef.current, auth: authRef.current, db: dbRef.current };
     }
     if (config.config) {
-      const app = initializeApp(config.config);
+      const app = initializeApp(config.config, 'velocity-lobby'); // Use a unique name
       appRef.current = app;
       authRef.current = getAuth(app);
       dbRef.current = getFirestore(app);
@@ -217,6 +217,7 @@ export default function VelocityLobbyClient() {
       setGameState('lobby');
   };
 
+  // Lobby state listener
   useEffect(() => {
     if (gameState !== 'lobby' || !lobbyCode || !user) return;
     
@@ -229,7 +230,7 @@ export default function VelocityLobbyClient() {
     const lobbyUnsub = onSnapshot(lobbyDocRef, (doc) => {
       if (doc.exists()) {
         const data = doc.data();
-        if (data.status === 'started' && gameState !== 'race') {
+        if (data.status === 'started') {
           startRaceSequence(data.laps || 3);
         }
       }
@@ -238,23 +239,40 @@ export default function VelocityLobbyClient() {
     const playersCol = collection(db, 'artifacts', config.appId, 'public', 'data', 'lobbies', lobbyCode, 'players');
     const playersUnsub = onSnapshot(playersCol, (snap) => {
       const players: Player[] = [];
-      const opps: Record<string, Opponent> = {};
       snap.forEach(d => {
-        const pData = d.data() as Player;
-        players.push({ id: d.id, ...pData });
-        if (d.id !== user.uid) {
-          opps[d.id] = { id: d.id, ...pData };
-        }
+        players.push({ id: d.id, ...d.data() } as Player);
       });
       setLobbyPlayers(players);
-      setOpponents(opps);
     });
 
     return () => {
       lobbyUnsub();
       playersUnsub();
     };
-  }, [gameState, lobbyCode, user?.uid, getFirebase, config.appId, getLobbyDocRef]);
+  }, [gameState, lobbyCode, user, getFirebase, config.appId, getLobbyDocRef]);
+
+  // Race state listener
+  useEffect(() => {
+    if (gameState !== 'race' || !lobbyCode || !user) return;
+    
+    const { db } = getFirebase();
+    if (!db || !config.appId) return;
+
+    const playersCol = collection(db, 'artifacts', config.appId, 'public', 'data', 'lobbies', lobbyCode, 'players');
+    const playersUnsub = onSnapshot(playersCol, (snap) => {
+      const opps: Record<string, Opponent> = {};
+      snap.forEach(d => {
+        if (d.id !== user.uid) {
+          opps[d.id] = { id: d.id, ...d.data() } as Opponent;
+        }
+      });
+      setOpponents(opps);
+    });
+
+    return () => {
+      playersUnsub();
+    }
+  }, [gameState, lobbyCode, user, getFirebase, config.appId]);
 
 
   const startRaceByHost = async () => {
