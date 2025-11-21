@@ -44,12 +44,17 @@ export function RaceScreen({
   const lapInfoRef = useRef(lapInfo);
 
   const [drsState, setDrsState] = useState({ active: false, charge: 100 });
+  const drsStateRef = useRef(drsState);
   const [leaderboardData, setLeaderboardData] = useState<Player[]>([]);
   const [windowSize, setWindowSize] = useState({ width: 1920, height: 1080 });
   
   useEffect(() => {
     lapInfoRef.current = lapInfo;
   }, [lapInfo]);
+
+  useEffect(() => {
+    drsStateRef.current = drsState;
+  }, [drsState]);
 
   const getRoadCurve = useCallback((x: number) => {
     const val = x || 0;
@@ -200,12 +205,12 @@ export function RaceScreen({
     Object.values(opponents).forEach(opp => {
       drawCar(ctx, opp.x || 0, opp.y || getRoadCurve(opp.x || 0), opp.color, opp.name, false, false);
     });
-    drawCar(ctx, phys.current.x, phys.current.y, playerCar.color, "SEN", drsState.active, inputs.current.brake);
+    drawCar(ctx, phys.current.x, phys.current.y, playerCar.color, "SEN", drsStateRef.current.active, inputs.current.brake);
     drawSparks(ctx);
     ctx.restore();
 
     drawMiniMap(ctx, width, height);
-  }, [playerCar.color, drsState.active, opponents, getRoadCurve, drawCar, drawSparks]);
+  }, [playerCar.color, opponents, getRoadCurve, drawCar, drawSparks]);
 
   const loop = useCallback(() => {
     if (!gameActive.current) return;
@@ -213,11 +218,12 @@ export function RaceScreen({
     // Physics update
     const p = phys.current;
     const i = inputs.current;
+    const currentDrsState = drsStateRef.current;
 
-    let currentMaxSpeed = drsState.active ? MAX_SPEED_DRS : MAX_SPEED_NORMAL;
-    let currentAccel = drsState.active ? ACCELERATION * 1.5 : ACCELERATION;
+    let currentMaxSpeed = currentDrsState.active ? MAX_SPEED_DRS : MAX_SPEED_NORMAL;
+    let currentAccel = currentDrsState.active ? ACCELERATION * 1.5 : ACCELERATION;
 
-    if (i.drs && drsState.charge > 0) {
+    if (i.drs && currentDrsState.charge > 0) {
       setDrsState(prev => ({ ...prev, active: true, charge: Math.max(0, prev.charge - 0.5) }));
     } else {
       setDrsState(prev => ({ ...prev, active: false, charge: Math.min(100, prev.charge + 0.1) }));
@@ -254,18 +260,20 @@ export function RaceScreen({
     p.x += p.speed;
 
     setLapInfo(prev => {
-      const currentLapInfo = prev;
+      if (!gameActive.current) return prev;
       const newLap = Math.floor(p.x / TRACK_LENGTH) + 1;
-      if (newLap > currentLapInfo.current) {
-        if (newLap > currentLapInfo.total) {
-          setGameState('finished');
-          gameActive.current = false;
-          return { ...currentLapInfo, finished: true };
+      if (newLap > prev.current) {
+        if (newLap > prev.total) {
+          if (!prev.finished) {
+            setGameState('finished');
+            gameActive.current = false;
+          }
+          return { ...prev, finished: true };
         } else {
-          return { ...currentLapInfo, current: newLap };
+          return { ...prev, current: newLap };
         }
       }
-      return currentLapInfo;
+      return prev;
     });
     
     // Bots update
@@ -299,7 +307,7 @@ export function RaceScreen({
     
     draw();
     requestRef.current = requestAnimationFrame(loop);
-  }, [draw, drsState, getRoadCurve, playerCar.name, opponents, setGameState, setLapInfo, syncMultiplayer]);
+  }, [draw, getRoadCurve, playerCar.name, opponents, setGameState, setLapInfo, syncMultiplayer]);
 
 
   const addBot = () => {
@@ -330,7 +338,7 @@ export function RaceScreen({
       if (key === 'd') inputs.current.right = true;
       if (e.key === ' ' || e.key === 'Shift') inputs.current.drs = true;
       if (e.key === 'Escape') quitRace();
-      if (key === 'r') triggerRaceEngineer(phys.current, drsState, lapInfoRef.current);
+      if (key === 'r') triggerRaceEngineer(phys.current, drsStateRef.current, lapInfoRef.current);
     };
     const hU = (e: KeyboardEvent) => {
       const key = e.key.toLowerCase();
@@ -353,7 +361,7 @@ export function RaceScreen({
       gameActive.current = false;
       if (requestRef.current) cancelAnimationFrame(requestRef.current);
     };
-  }, [loop, quitRace, triggerRaceEngineer, drsState]);
+  }, [loop, quitRace, triggerRaceEngineer]);
 
   return (
     <div className="h-screen w-full bg-background overflow-hidden relative select-none cursor-none">
@@ -412,7 +420,7 @@ export function RaceScreen({
       
       {/* Controls */}
       <div className="absolute bottom-6 right-6 flex gap-3 pointer-events-auto">
-         <button onClick={() => triggerRaceEngineer(phys.current, drsState, lapInfoRef.current)} disabled={radioLoading} className="bg-primary/80 hover:bg-primary text-white px-5 py-3 rounded-xl font-bold text-xs flex items-center gap-2 backdrop-blur border transition-all disabled:opacity-50 disabled:cursor-wait">
+         <button onClick={() => triggerRaceEngineer(phys.current, drsStateRef.current, lapInfoRef.current)} disabled={radioLoading} className="bg-primary/80 hover:bg-primary text-white px-5 py-3 rounded-xl font-bold text-xs flex items-center gap-2 backdrop-blur border transition-all disabled:opacity-50 disabled:cursor-wait">
             {radioLoading ? <Loader2 className="animate-spin" size={16} /> : <Radio size={16} />} TELSİZ (R)
          </button>
          <button onClick={addBot} className="bg-secondary/80 hover:bg-secondary text-white px-5 py-3 rounded-xl font-bold text-xs flex items-center gap-2 backdrop-blur border transition-all"><Plus size={14} /> BOT EKLE</button>
