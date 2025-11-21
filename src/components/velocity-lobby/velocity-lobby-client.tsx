@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
@@ -253,7 +254,7 @@ export default function VelocityLobbyClient() {
       lobbyUnsub();
       playersUnsub();
     };
-  }, [gameState, lobbyCode, user, getFirebase, config.appId, getLobbyDocRef]);
+  }, [gameState, lobbyCode, user?.uid, getFirebase, config.appId, getLobbyDocRef]);
 
 
   const startRaceByHost = async () => {

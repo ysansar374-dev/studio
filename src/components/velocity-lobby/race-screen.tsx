@@ -1,3 +1,4 @@
+
 // @/components/velocity-lobby/race-screen.tsx
 'use client';
 
@@ -11,7 +12,7 @@ type RaceScreenProps = {
   opponents: Record<string, Opponent>;
   setGameState: (state: string) => void;
   lapInfo: { current: number; total: number; finished: boolean };
-  setLapInfo: (info: any) => void;
+  setLapInfo: (updater: (prev: { current: number; total: number; finished: boolean }) => { current: number; total: number; finished: boolean }) => void;
   syncMultiplayer: (phys: any, lapInfo: any) => void;
   triggerRaceEngineer: (phys: any, drsState: any, lapInfo: any) => void;
   radioMessage: string | null;
@@ -40,10 +41,15 @@ export function RaceScreen({
   const lastSync = useRef(0);
   const uiUpdateTimer = useRef(0);
   const sparks = useRef<any[]>([]);
+  const lapInfoRef = useRef(lapInfo);
 
   const [drsState, setDrsState] = useState({ active: false, charge: 100 });
   const [leaderboardData, setLeaderboardData] = useState<Player[]>([]);
   const [windowSize, setWindowSize] = useState({ width: 1920, height: 1080 });
+  
+  useEffect(() => {
+    lapInfoRef.current = lapInfo;
+  }, [lapInfo]);
 
   const getRoadCurve = useCallback((x: number) => {
     const val = x || 0;
@@ -175,7 +181,7 @@ export function RaceScreen({
       ctx.lineTo(sx + SEGMENT_WIDTH, y2 + 2000); ctx.lineTo(sx, y1 + 2000); ctx.fill();
       
       ctx.fillStyle = '#334155'; // Road
-      ctxbeginPath(); ctx.moveTo(sx, y1 - ROAD_WIDTH / 2); ctx.lineTo(sx + SEGMENT_WIDTH, y2 - ROAD_WIDTH / 2);
+      ctx.beginPath(); ctx.moveTo(sx, y1 - ROAD_WIDTH / 2); ctx.lineTo(sx + SEGMENT_WIDTH, y2 - ROAD_WIDTH / 2);
       ctx.lineTo(sx + SEGMENT_WIDTH, y2 + ROAD_WIDTH / 2); ctx.lineTo(sx, y1 + ROAD_WIDTH / 2); ctx.fill();
       
       ctx.fillStyle = Math.floor(worldX / 400) % 2 === 0 ? '#dc2626' : '#f8fafc';
@@ -199,7 +205,7 @@ export function RaceScreen({
     ctx.restore();
 
     drawMiniMap(ctx, width, height);
-  }, [playerCar.color, drsState.active, botsRef, opponents, getRoadCurve, drawCar, drawSparks]);
+  }, [playerCar.color, drsState.active, opponents, getRoadCurve, drawCar, drawSparks]);
 
   const loop = useCallback(() => {
     if (!gameActive.current) return;
@@ -247,16 +253,20 @@ export function RaceScreen({
     p.speed = Math.max(0, Math.min(p.speed, currentMaxSpeed));
     p.x += p.speed;
 
-    const newLap = Math.floor(p.x / TRACK_LENGTH) + 1;
-    if (newLap > lapInfo.current) {
-      if (newLap > lapInfo.total) {
-        setGameState('finished');
-        gameActive.current = false;
-        setLapInfo((prev: any) => ({ ...prev, finished: true }));
-      } else {
-        setLapInfo((prev: any) => ({ ...prev, current: newLap }));
+    setLapInfo(prev => {
+      const currentLapInfo = prev;
+      const newLap = Math.floor(p.x / TRACK_LENGTH) + 1;
+      if (newLap > currentLapInfo.current) {
+        if (newLap > currentLapInfo.total) {
+          setGameState('finished');
+          gameActive.current = false;
+          return { ...currentLapInfo, finished: true };
+        } else {
+          return { ...currentLapInfo, current: newLap };
+        }
       }
-    }
+      return currentLapInfo;
+    });
     
     // Bots update
     botsRef.current.forEach(bot => {
@@ -283,13 +293,13 @@ export function RaceScreen({
     }
     
     if (Date.now() - lastSync.current > 100) {
-        syncMultiplayer(phys.current, lapInfo);
+        syncMultiplayer(phys.current, lapInfoRef.current);
         lastSync.current = Date.now();
     }
     
     draw();
     requestRef.current = requestAnimationFrame(loop);
-  }, [draw, drsState, lapInfo, getRoadCurve, playerCar.name, opponents, setGameState, setLapInfo, syncMultiplayer]);
+  }, [draw, drsState, getRoadCurve, playerCar.name, opponents, setGameState, setLapInfo, syncMultiplayer]);
 
 
   const addBot = () => {
@@ -320,7 +330,7 @@ export function RaceScreen({
       if (key === 'd') inputs.current.right = true;
       if (e.key === ' ' || e.key === 'Shift') inputs.current.drs = true;
       if (e.key === 'Escape') quitRace();
-      if (key === 'r') triggerRaceEngineer(phys.current, drsState, lapInfo);
+      if (key === 'r') triggerRaceEngineer(phys.current, drsState, lapInfoRef.current);
     };
     const hU = (e: KeyboardEvent) => {
       const key = e.key.toLowerCase();
@@ -343,7 +353,7 @@ export function RaceScreen({
       gameActive.current = false;
       if (requestRef.current) cancelAnimationFrame(requestRef.current);
     };
-  }, [loop, quitRace, triggerRaceEngineer, drsState, lapInfo]);
+  }, [loop, quitRace, triggerRaceEngineer, drsState]);
 
   return (
     <div className="h-screen w-full bg-background overflow-hidden relative select-none cursor-none">
@@ -402,7 +412,7 @@ export function RaceScreen({
       
       {/* Controls */}
       <div className="absolute bottom-6 right-6 flex gap-3 pointer-events-auto">
-         <button onClick={() => triggerRaceEngineer(phys.current, drsState, lapInfo)} disabled={radioLoading} className="bg-primary/80 hover:bg-primary text-white px-5 py-3 rounded-xl font-bold text-xs flex items-center gap-2 backdrop-blur border transition-all disabled:opacity-50 disabled:cursor-wait">
+         <button onClick={() => triggerRaceEngineer(phys.current, drsState, lapInfoRef.current)} disabled={radioLoading} className="bg-primary/80 hover:bg-primary text-white px-5 py-3 rounded-xl font-bold text-xs flex items-center gap-2 backdrop-blur border transition-all disabled:opacity-50 disabled:cursor-wait">
             {radioLoading ? <Loader2 className="animate-spin" size={16} /> : <Radio size={16} />} TELSİZ (R)
          </button>
          <button onClick={addBot} className="bg-secondary/80 hover:bg-secondary text-white px-5 py-3 rounded-xl font-bold text-xs flex items-center gap-2 backdrop-blur border transition-all"><Plus size={14} /> BOT EKLE</button>
