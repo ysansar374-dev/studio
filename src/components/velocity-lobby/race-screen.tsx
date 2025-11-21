@@ -5,7 +5,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import type { PlayerCar, Player, Opponent } from '@/types';
 import { ACCELERATION, BASE_ROAD_Y, FRICTION_ROAD, LANE_SPEED, MAX_SPEED_DRS, MAX_SPEED_NORMAL, ROAD_WIDTH, TRACK_LENGTH, WALL_BOUNCE } from '@/lib/constants';
-import { Loader2, LogOut, Plus, Radio, Zap } from 'lucide-react';
+import { Loader2, LogOut, Plus, Radio, Zap, ShieldAlert } from 'lucide-react';
 
 type RaceScreenProps = {
   playerCar: PlayerCar;
@@ -44,17 +44,12 @@ export function RaceScreen({
   const lapInfoRef = useRef(lapInfo);
 
   const [drsState, setDrsState] = useState({ active: false, charge: 100 });
-  const drsStateRef = useRef(drsState);
   const [leaderboardData, setLeaderboardData] = useState<Player[]>([]);
   const [windowSize, setWindowSize] = useState({ width: 1920, height: 1080 });
   
   useEffect(() => {
     lapInfoRef.current = lapInfo;
   }, [lapInfo]);
-
-  useEffect(() => {
-    drsStateRef.current = drsState;
-  }, [drsState]);
 
   const getRoadCurve = useCallback((x: number) => {
     const val = x || 0;
@@ -145,6 +140,16 @@ export function RaceScreen({
     ctx.restore();
   };
 
+  const createSparks = (x: number, y: number, count: number) => {
+    for (let k = 0; k < count; k++) {
+      sparks.current.push({
+        x: x, y: y,
+        vx: (Math.random() - 0.5) * 8, vy: (Math.random() - 0.5) * 8,
+        alpha: 1
+      });
+    }
+  };
+
   const drawSparks = useCallback((ctx: CanvasRenderingContext2D) => {
     sparks.current = sparks.current.filter(spark => spark.alpha > 0);
     sparks.current.forEach(spark => {
@@ -205,12 +210,12 @@ export function RaceScreen({
     Object.values(opponents).forEach(opp => {
       drawCar(ctx, opp.x || 0, opp.y || getRoadCurve(opp.x || 0), opp.color, opp.name, false, false);
     });
-    drawCar(ctx, phys.current.x, phys.current.y, playerCar.color, "SEN", drsStateRef.current.active, inputs.current.brake);
+    drawCar(ctx, phys.current.x, phys.current.y, playerCar.color, "SEN", drsState.active, inputs.current.brake);
     drawSparks(ctx);
     ctx.restore();
 
     drawMiniMap(ctx, width, height);
-  }, [playerCar.color, opponents, getRoadCurve, drawCar, drawSparks]);
+  }, [playerCar.color, opponents, getRoadCurve, drawCar, drawSparks, drsState.active]);
 
   const loop = useCallback(() => {
     if (!gameActive.current) return;
@@ -218,16 +223,19 @@ export function RaceScreen({
     // Physics update
     const p = phys.current;
     const i = inputs.current;
-    const currentDrsState = drsStateRef.current;
+    
+    let currentDrsActive = false;
+    setDrsState(prev => {
+        if (i.drs && prev.charge > 0) {
+            currentDrsActive = true;
+            return { active: true, charge: Math.max(0, prev.charge - 0.5) };
+        }
+        currentDrsActive = false;
+        return { active: false, charge: Math.min(100, prev.charge + 0.1) };
+    });
 
-    let currentMaxSpeed = currentDrsState.active ? MAX_SPEED_DRS : MAX_SPEED_NORMAL;
-    let currentAccel = currentDrsState.active ? ACCELERATION * 1.5 : ACCELERATION;
-
-    if (i.drs && currentDrsState.charge > 0) {
-      setDrsState(prev => ({ ...prev, active: true, charge: Math.max(0, prev.charge - 0.5) }));
-    } else {
-      setDrsState(prev => ({ ...prev, active: false, charge: Math.min(100, prev.charge + 0.1) }));
-    }
+    let currentMaxSpeed = currentDrsActive ? MAX_SPEED_DRS : MAX_SPEED_NORMAL;
+    let currentAccel = currentDrsActive ? ACCELERATION * 1.5 : ACCELERATION;
 
     if (i.gas) p.speed += currentAccel;
     else p.speed *= FRICTION_ROAD;
@@ -244,17 +252,24 @@ export function RaceScreen({
       p.collision = true;
       const sparkSide = p.y < roadCenterY ? -1 : 1;
       p.y = roadCenterY + (sparkSide * (ROAD_WIDTH / 2 - carHalfHeight));
-
-      for(let k=0; k<10; k++) {
-        sparks.current.push({
-          x: p.x - 60,
-          y: p.y + (sparkSide * 15),
-          vx: p.speed * 0.2 - Math.random() * 5,
-          vy: (Math.random() - 0.5) * 5,
-          alpha: 1
-        });
-      }
+      createSparks(p.x - 60, p.y + (sparkSide * 15), 10);
     }
+    
+    // Collision with bots
+    botsRef.current.forEach(bot => {
+        if (!bot.x || !bot.y) return;
+        const dx = p.x - bot.x;
+        const dy = p.y - bot.y;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        if (distance < 80) { // Collision threshold
+            p.speed *= 0.85;
+            (bot as any).speed *= 0.9;
+            p.x -= dx * 0.1;
+            p.y -= dy * 0.1;
+            p.collision = true;
+            createSparks(p.x - dx/2, p.y - dy/2, 15);
+        }
+    });
 
     p.speed = Math.max(0, Math.min(p.speed, currentMaxSpeed));
     p.x += p.speed;
@@ -277,17 +292,37 @@ export function RaceScreen({
     });
     
     // Bots update
-    botsRef.current.forEach(bot => {
+    botsRef.current.forEach((bot, index) => {
+        const botSpeed = (bot as any).speed || 0;
         const botX = bot.x || 0;
         const botY = bot.y || 0;
         const idealY = getRoadCurve(botX) + ((bot as any).offsetY || 0);
+
         bot.y = botY + (idealY - botY) * 0.05;
-        bot.x = botX + ((bot as any).speed || 0);
-        if (Math.abs(phys.current.x - botX) > 4000) {
-            bot.x = phys.current.x - 1000;
+        bot.x = botX + botSpeed;
+
+        if (Math.random() < 0.005) { // Randomly change lane target
+             (bot as any).offsetY = (Math.random() - 0.5) * (ROAD_WIDTH - 60);
+        }
+        
+        // Bot-on-bot collision
+        for(let j = index + 1; j < botsRef.current.length; j++) {
+            const otherBot = botsRef.current[j];
+            if (!otherBot.x || !otherBot.y) continue;
+            const dx = botX - otherBot.x;
+            const dy = botY - otherBot.y;
+            if (Math.abs(dx) < 120 && Math.abs(dy) < 30) {
+                (bot as any).x -= dx * 0.05;
+                (otherBot as any).x += dx * 0.05;
+            }
+        }
+
+        if (Math.abs(p.x - botX) > 4000) {
+            bot.x = p.x + (Math.random() > 0.5 ? 1 : -1) * (1000 + Math.random() * 500);
             bot.y = getRoadCurve(bot.x);
         }
     });
+
 
     // UI & Sync
     uiUpdateTimer.current++;
@@ -311,6 +346,7 @@ export function RaceScreen({
 
 
   const addBot = () => {
+    if (botsRef.current.length >= 12) return;
     const startX = phys.current.x;
     const randomTeam = { color: '#888' };
     const newBot = {
@@ -318,7 +354,7 @@ export function RaceScreen({
       x: startX - 200 + Math.random() * 400,
       speed: 18 + Math.random() * 4,
       color: randomTeam.color,
-      offsetY: (Math.random() - 0.5) * 150,
+      offsetY: (Math.random() - 0.5) * (ROAD_WIDTH - 60),
       name: `Bot ${botsRef.current.length + 1}`
     };
     (newBot as any).y = getRoadCurve(newBot.x) + newBot.offsetY;
@@ -338,7 +374,7 @@ export function RaceScreen({
       if (key === 'd') inputs.current.right = true;
       if (e.key === ' ' || e.key === 'Shift') inputs.current.drs = true;
       if (e.key === 'Escape') quitRace();
-      if (key === 'r') triggerRaceEngineer(phys.current, drsStateRef.current, lapInfoRef.current);
+      if (key === 'r') triggerRaceEngineer(phys.current, drsState, lapInfoRef.current);
     };
     const hU = (e: KeyboardEvent) => {
       const key = e.key.toLowerCase();
@@ -361,7 +397,7 @@ export function RaceScreen({
       gameActive.current = false;
       if (requestRef.current) cancelAnimationFrame(requestRef.current);
     };
-  }, [loop, quitRace, triggerRaceEngineer]);
+  }, [loop, quitRace, triggerRaceEngineer, drsState]);
 
   return (
     <div className="h-screen w-full bg-background overflow-hidden relative select-none cursor-none">
@@ -420,14 +456,22 @@ export function RaceScreen({
       
       {/* Controls */}
       <div className="absolute bottom-6 right-6 flex gap-3 pointer-events-auto">
-         <button onClick={() => triggerRaceEngineer(phys.current, drsStateRef.current, lapInfoRef.current)} disabled={radioLoading} className="bg-primary/80 hover:bg-primary text-white px-5 py-3 rounded-xl font-bold text-xs flex items-center gap-2 backdrop-blur border transition-all disabled:opacity-50 disabled:cursor-wait">
+         <button onClick={() => triggerRaceEngineer(phys.current, drsState, lapInfoRef.current)} disabled={radioLoading} className="bg-primary/80 hover:bg-primary text-white px-5 py-3 rounded-xl font-bold text-xs flex items-center gap-2 backdrop-blur border transition-all disabled:opacity-50 disabled:cursor-wait">
             {radioLoading ? <Loader2 className="animate-spin" size={16} /> : <Radio size={16} />} TELSİZ (R)
          </button>
          <button onClick={addBot} className="bg-secondary/80 hover:bg-secondary text-white px-5 py-3 rounded-xl font-bold text-xs flex items-center gap-2 backdrop-blur border transition-all"><Plus size={14} /> BOT EKLE</button>
          <button onClick={quitRace} className="bg-destructive/80 hover:bg-destructive text-white px-5 py-3 rounded-xl font-bold text-xs flex items-center gap-2 backdrop-blur transition-all"><LogOut size={14} /> ÇIK</button>
       </div>
 
-      {phys.current.collision && <div className="absolute inset-0 border-[20px] border-red-600/30 pointer-events-none animate-pulse"></div>}
+      {phys.current.collision && 
+        <div className="absolute inset-0 border-8 sm:border-[16px] border-red-600/20 pointer-events-none animate-pulse flex items-center justify-center">
+            <div className="bg-red-900/50 text-white p-4 rounded-lg flex items-center gap-3 backdrop-blur-sm">
+                <ShieldAlert className="w-8 h-8 text-red-300"/>
+                <span className="font-bold text-2xl">TEMAS!</span>
+            </div>
+        </div>
+      }
     </div>
   );
-}
+
+    
