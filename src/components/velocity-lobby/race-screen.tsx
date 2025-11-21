@@ -361,7 +361,7 @@ export function RaceScreen({
         setLeaderboardData(allRacers as Player[]);
     }
     
-    if (Date.now() - lastSync.current > 500) {
+    if (Date.now() - lastSync.current > 1000) {
         syncMultiplayer(phys.current, lapInfoRef.current);
         lastSync.current = Date.now();
     }
@@ -501,11 +501,3 @@ export function RaceScreen({
   );
 
 }
-
-    
-
-    
-
-
-
-    
