@@ -1,16 +1,16 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { initializeApp, type FirebaseApp, type FirebaseOptions } from 'firebase/app';
+import { initializeApp, type FirebaseApp } from 'firebase/app';
 import { getAuth, signInAnonymously, onAuthStateChanged, User, signInWithCustomToken, Auth } from 'firebase/auth';
-import { getFirestore, collection, doc, setDoc, onSnapshot, serverTimestamp, updateDoc, addDoc, getDoc, Firestore } from 'firebase/firestore';
+import { getFirestore, collection, doc, setDoc, onSnapshot, serverTimestamp, updateDoc, getDoc, Firestore } from 'firebase/firestore';
 
 import { MenuScreen } from './menu-screen';
 import { LobbyScreen } from './lobby-screen';
 import { RaceScreen } from './race-screen';
 import { FinishedScreen } from './finished-screen';
 import { generateTeamName as generateTeamNameAction, getRaceEngineerMessage } from '@/app/actions';
-import { TEAMS, TRACK_LENGTH } from '@/lib/constants';
+import { TEAMS } from '@/lib/constants';
 import { useFirebaseConfig } from '@/lib/firebase';
 import type { PlayerCar, Player, Opponent } from '@/types';
 import { useToast } from '@/hooks/use-toast';
@@ -52,7 +52,7 @@ export default function VelocityLobbyClient() {
   const authRef = useRef<Auth | null>(null);
   const dbRef = useRef<Firestore | null>(null);
   
-  const getFirebase = () => {
+  const getFirebase = useCallback(() => {
     if (appRef.current && authRef.current && dbRef.current) {
       return { app: appRef.current, auth: authRef.current, db: dbRef.current };
     }
@@ -64,7 +64,7 @@ export default function VelocityLobbyClient() {
       return { app, auth: authRef.current, db: dbRef.current };
     }
     return { app: null, auth: null, db: null };
-  };
+  }, [config.config]);
 
 
   // --- Initialization ---
@@ -115,7 +115,7 @@ export default function VelocityLobbyClient() {
       }
     });
     return () => unsub();
-  }, [config, toast]);
+  }, [config, toast, getFirebase]);
 
   // --- AI Actions ---
   const generateTeamName = async () => {
@@ -149,13 +149,13 @@ export default function VelocityLobbyClient() {
     const { db } = getFirebase();
     if (!db || !config.appId) return null;
     return doc(db, 'artifacts', config.appId, 'public', 'data', 'lobbies', code);
-  }, [config.appId]);
+  }, [config.appId, getFirebase]);
 
   const getPlayerDocRef = useCallback((lobbyCode: string, playerId: string) => {
      const { db } = getFirebase();
      if (!db || !config.appId) return null;
      return doc(db, 'artifacts', config.appId, 'public', 'data', 'lobbies', lobbyCode, 'players', playerId);
-  }, [config.appId]);
+  }, [config.appId, getFirebase]);
 
 
   // --- Lobby Actions ---
@@ -163,10 +163,7 @@ export default function VelocityLobbyClient() {
     const { db } = getFirebase();
     if (!user || !db) return;
     const code = Math.random().toString(36).substring(2, 8).toUpperCase();
-    setLobbyCode(code);
-    setIsHost(true);
-    setGameState('lobby');
-
+    
     const lobbyDocRef = getLobbyDocRef(code);
     if (!lobbyDocRef) return;
 
@@ -176,7 +173,7 @@ export default function VelocityLobbyClient() {
       createdAt: serverTimestamp(),
       laps: targetLaps
     });
-    await joinLobbyInternal(code, user.uid);
+    await joinLobbyInternal(code, user.uid, true);
   };
 
   const joinLobby = async () => {
@@ -193,18 +190,15 @@ export default function VelocityLobbyClient() {
       return;
     }
     
-    setLobbyCode(code);
     setTargetLaps(lobbyDoc.data().laps || 3);
-    setIsHost(lobbyDoc.data().hostId === user.uid);
-    setGameState('lobby');
+    const isLobbyHost = lobbyDoc.data().hostId === user.uid;
     
-    await joinLobbyInternal(code, user.uid);
+    await joinLobbyInternal(code, user.uid, isLobbyHost);
   };
 
-  const joinLobbyInternal = async (code: string, uid: string) => {
-      const { db } = getFirebase();
+  const joinLobbyInternal = async (code: string, uid: string, isLobbyHost: boolean) => {
       const playerRef = getPlayerDocRef(code, uid);
-      if(!playerRef || !db || !config.appId) return;
+      if(!playerRef) return;
 
       await setDoc(playerRef, {
         name: playerCar.name,
@@ -216,34 +210,51 @@ export default function VelocityLobbyClient() {
         y: 0,
         lap: 1
       });
+      
+      setLobbyCode(code);
+      setIsHost(isLobbyHost);
+      setGameState('lobby');
+  };
 
-      const lobbyDocRef = getLobbyDocRef(code);
-      if(!lobbyDocRef) return;
+  useEffect(() => {
+    if (gameState !== 'lobby' || !lobbyCode || !user) return;
+    
+    const { db } = getFirebase();
+    if (!db || !config.appId) return;
 
-      onSnapshot(lobbyDocRef, (doc) => {
-        if (doc.exists()) {
-          const data = doc.data();
-          if (data.status === 'started' && gameState !== 'race') {
-            startRaceSequence(data.laps || 3);
-          }
+    const lobbyDocRef = getLobbyDocRef(lobbyCode);
+    if (!lobbyDocRef) return;
+
+    const lobbyUnsub = onSnapshot(lobbyDocRef, (doc) => {
+      if (doc.exists()) {
+        const data = doc.data();
+        if (data.status === 'started' && gameState !== 'race') {
+          startRaceSequence(data.laps || 3);
+        }
+      }
+    });
+
+    const playersCol = collection(db, 'artifacts', config.appId, 'public', 'data', 'lobbies', lobbyCode, 'players');
+    const playersUnsub = onSnapshot(playersCol, (snap) => {
+      const players: Player[] = [];
+      const opps: Record<string, Opponent> = {};
+      snap.forEach(d => {
+        const pData = d.data() as Player;
+        players.push({ id: d.id, ...pData });
+        if (d.id !== user.uid) {
+          opps[d.id] = { id: d.id, ...pData };
         }
       });
-      
-      const playersCol = collection(db, 'artifacts', config.appId, 'public', 'data', 'lobbies', code, 'players');
-      onSnapshot(playersCol, (snap) => {
-        const players: Player[] = [];
-        const opps: Record<string, Opponent> = {};
-        snap.forEach(d => {
-          const pData = d.data() as Player;
-          players.push({ id: d.id, ...pData });
-          if (d.id !== uid) {
-            opps[d.id] = { id: d.id, ...pData };
-          }
-        });
-        setLobbyPlayers(players);
-        setOpponents(opps);
-      });
-  };
+      setLobbyPlayers(players);
+      setOpponents(opps);
+    });
+
+    return () => {
+      lobbyUnsub();
+      playersUnsub();
+    };
+  }, [gameState, lobbyCode, user, getFirebase, config.appId, getLobbyDocRef]);
+
 
   const startRaceByHost = async () => {
     if (!isHost || !lobbyCode) return;
@@ -280,11 +291,11 @@ export default function VelocityLobbyClient() {
 
 
   // --- Render ---
-  if (!config.config) {
+  if (!config.config || connectionStatus === 'connecting' || !user) {
     return (
       <div className="h-screen w-full bg-background flex items-center justify-center">
         <Loader2 className="h-16 w-16 text-accent animate-spin" />
-        <p className="text-muted-foreground ml-4">Firebase config is loading...</p>
+        <p className="text-muted-foreground ml-4">Yükleniyor...</p>
       </div>
     );
   }
