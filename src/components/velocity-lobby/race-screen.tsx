@@ -107,27 +107,18 @@ export function RaceScreen({
     const progress = val / TRACK_LENGTH;
     let y = BASE_ROAD_Y;
 
-    // Gentle starter curves
-    y += Math.sin(progress * Math.PI * 4) * 100;
-
-    // The "Turn 8" inspired section
-    if (progress > 0.3 && progress < 0.6) {
-        const turn8Progress = (progress - 0.3) / 0.3;
-        y -= Math.sin(turn8Progress * Math.PI * 3) * 300; // First apex
-        y += Math.cos(turn8Progress * Math.PI * 5) * 250; // Second apex
-        y -= Math.sin(turn8Progress * Math.PI * 7) * 200; // Third apex
-    }
+    // A few gentle S-curves
+    y += Math.sin(progress * Math.PI * 2) * 150;
+    y += Math.sin(progress * Math.PI * 6) * 200;
     
-    // A long straight
-    
-    // A final tight hairpin
-    if (progress > 0.8) {
-        const hairpinProgress = (progress - 0.8) / 0.2;
-        y += Math.sin(hairpinProgress * Math.PI) * 500;
+    // A wider, longer curve
+    if (progress > 0.5) {
+      const longCurveProgress = (progress - 0.5) * 2;
+      y += Math.sin(longCurveProgress * Math.PI) * 350;
     }
 
     return y;
-}, []);
+  }, []);
 
   const drawCar = useCallback((ctx: CanvasRenderingContext2D, carX: number, carY: number, color: string, name: string, isDrsOpen: boolean, isBraking: boolean, wheelAngle: number, bodyAngle: number) => {
     ctx.save();
