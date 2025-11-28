@@ -292,7 +292,7 @@ export function RaceScreen({
         }
     });
 
-    const currentMaxSpeed = drsState.active ? MAX_SPEED_DRS : MAX_SPEED_NORMAL;
+    const currentMaxSpeed = currentDrsActive ? MAX_SPEED_DRS : MAX_SPEED_NORMAL;
 
     let dynamicAccel = ACCELERATION;
     const currentSpeedKmh = p.speed * 10;
@@ -303,7 +303,7 @@ export function RaceScreen({
         dynamicAccel = ACCELERATION * 0.3;
     }
 
-    const currentAccel = drsState.active ? dynamicAccel * 1.5 : dynamicAccel;
+    const currentAccel = currentDrsActive ? dynamicAccel * 1.5 : dynamicAccel;
 
     if (i.gas) p.speed += currentAccel;
     else p.speed *= FRICTION_ROAD;
@@ -468,7 +468,7 @@ export function RaceScreen({
     
     draw();
     requestRef.current = requestAnimationFrame(loop);
-  }, [draw, getRoadCurve, playerCar.name, opponents, setGameState, syncMultiplayer, setLapInfo, drsState.active, assistEnabled]);
+  }, [draw, getRoadCurve, playerCar.name, opponents, setGameState, syncMultiplayer, setLapInfo, assistEnabled]);
 
 
   const addBot = () => {
