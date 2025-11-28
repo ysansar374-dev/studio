@@ -63,7 +63,7 @@ export function RaceScreen({
   const drawCar = useCallback((ctx: CanvasRenderingContext2D, x: number, y: number, color: string, name: string, isDrsOpen: boolean, isBraking: boolean) => {
     ctx.save();
     ctx.translate(x, y);
-    const slope = (getRoadCurve(x + 20) - getRoadCurve(x)) / 20;
+    const slope = (getRoadCurve(phys.current.x + 20) - getRoadCurve(phys.current.x)) / 20;
     ctx.rotate(slope * 0.8);
 
     ctx.fillStyle = color;
@@ -165,6 +165,87 @@ export function RaceScreen({
     });
   }, []);
 
+  const draw = useCallback(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const screenW = canvas.width;
+    const screenH = canvas.height;
+    ctx.clearRect(0, 0, screenW, screenH);
+    ctx.fillStyle = '#455a64';
+    ctx.fillRect(0, 0, screenW, screenH);
+
+    ctx.save();
+    ctx.translate(-phys.current.x + screenW / 2, -phys.current.y + screenH / 1.5);
+    
+    // Draw road
+    ctx.beginPath();
+    ctx.fillStyle = '#37474f';
+    for (let i = Math.floor(phys.current.x / 100) * 100 - 4000; i < phys.current.x + 4000; i += 100) {
+      const roadY = getRoadCurve(i);
+      ctx.lineTo(i, roadY - ROAD_WIDTH / 2);
+    }
+    for (let i = Math.floor(phys.current.x / 100) * 100 + 4000; i > phys.current.x - 4000; i -= 100) {
+      const roadY = getRoadCurve(i);
+      ctx.lineTo(i, roadY + ROAD_WIDTH / 2);
+    }
+    ctx.fill();
+
+    // Draw lines and kerbs
+    ctx.strokeStyle = '#cfd8dc';
+    ctx.lineWidth = 10;
+    ctx.beginPath();
+    for (let i = Math.floor(phys.current.x / 20) * 20 - 4000; i < phys.current.x + 4000; i += 20) {
+      ctx.lineTo(i, getRoadCurve(i) - ROAD_WIDTH / 2);
+    }
+    ctx.stroke();
+    ctx.beginPath();
+    for (let i = Math.floor(phys.current.x / 20) * 20 - 4000; i < phys.current.x + 4000; i += 20) {
+      ctx.lineTo(i, getRoadCurve(i) + ROAD_WIDTH / 2);
+    }
+    ctx.stroke();
+
+    const kerb_height = 20;
+    for (let i = Math.floor(phys.current.x / 100) * 100 - 4000; i < phys.current.x + 4000; i += 100) {
+      const roadY = getRoadCurve(i);
+      ctx.fillStyle = (i / 100) % 2 === 0 ? '#ef4444' : 'white';
+      ctx.beginPath();
+      ctx.moveTo(i, roadY - ROAD_WIDTH / 2);
+      ctx.lineTo(i + 100, roadY - ROAD_WIDTH / 2);
+      ctx.lineTo(i + 100, roadY - ROAD_WIDTH / 2 - kerb_height);
+      ctx.lineTo(i, roadY - ROAD_WIDTH / 2 - kerb_height);
+      ctx.fill();
+    }
+    
+    // Draw finish line
+    if (phys.current.x > TRACK_LENGTH - 500 || phys.current.x < 500) {
+        drawCheckeredLine(ctx, 0, getRoadCurve(0) - ROAD_WIDTH/2, ROAD_WIDTH);
+    }
+
+    // Draw bots
+    botsRef.current.forEach(bot => {
+      drawCar(ctx, bot.x || 0, bot.y || 0, bot.color, bot.name, false, false);
+    });
+
+    // Draw opponents
+    Object.values(opponents).forEach(o => {
+      drawCar(ctx, o.x || 0, o.y || 0, o.color, o.name, false, false);
+    });
+
+    // Draw player
+    drawCar(ctx, phys.current.x, phys.current.y, playerCar.color, playerCar.name, drsState.active, inputs.current.brake);
+    
+    // Draw sparks
+    drawSparks(ctx);
+
+    ctx.restore();
+    
+    drawMiniMap(ctx, screenW, screenH);
+  }, [getRoadCurve, drawCar, drawSparks, opponents, playerCar, drsState.active]);
+
+
   const loop = useCallback(() => {
     if (!gameActive.current) return;
 
@@ -172,20 +253,18 @@ export function RaceScreen({
     const i = inputs.current;
     
     let currentDrsActive = false;
-    let newDrsCharge: number;
-
+    
     setDrsState(prev => {
         if (i.drs && prev.charge > 0) {
             currentDrsActive = true;
-            newDrsCharge = Math.max(0, prev.charge - 0.5);
+            return { active: true, charge: Math.max(0, prev.charge - 0.5) };
         } else {
-             newDrsCharge = Math.min(100, prev.charge + 0.1);
+             return { active: false, charge: Math.min(100, prev.charge + 0.1) };
         }
-        return { active: i.drs && prev.charge > 0, charge: newDrsCharge };
     });
 
-    const currentMaxSpeed = currentDrsActive ? MAX_SPEED_DRS : MAX_SPEED_NORMAL;
-    const currentAccel = currentDrsActive ? ACCELERATION * 1.5 : ACCELERATION;
+    const currentMaxSpeed = drsState.active ? MAX_SPEED_DRS : MAX_SPEED_NORMAL;
+    const currentAccel = drsState.active ? ACCELERATION * 1.5 : ACCELERATION;
 
     if (i.gas) p.speed += currentAccel;
     else p.speed *= FRICTION_ROAD;
@@ -205,15 +284,13 @@ export function RaceScreen({
       createSparks(p.x - 60, p.y + (sparkSide * 15), 10);
     }
     
-    // Ghosting for the first 300 units
     if (p.x > 300) {
-        // Collision with bots
         botsRef.current.forEach(bot => {
             if (!bot.x || !bot.y) return;
             const dx = p.x - bot.x;
             const dy = p.y - bot.y;
             const distance = Math.sqrt(dx * dx + dy * dy);
-            if (distance < 80) { // Collision threshold
+            if (distance < 80) {
                 p.speed *= 0.85;
                 (bot as any).speed *= 0.9;
                 
@@ -230,17 +307,15 @@ export function RaceScreen({
             }
         });
 
-        // Collision with opponents
         Object.values(opponents).forEach(opp => {
             if (!opp.x || !opp.y) return;
             const dx = p.x - opp.x;
             const dy = p.y - opp.y;
             const distance = Math.sqrt(dx*dx + dy*dy);
-            if (distance < 80) { // Collision threshold: 80px
-                p.speed *= 0.85; // Player loses some speed
+            if (distance < 80) {
+                p.speed *= 0.85;
                 p.collision = true;
                 
-                // Apply a stronger bounce effect to prevent getting stuck
                 const overlap = 80 - distance;
                 const pushX = (dx / distance) * overlap * 1.2; 
                 const pushY = (dy / distance) * overlap * 1.2;
@@ -272,7 +347,6 @@ export function RaceScreen({
       return prev;
     });
     
-    // Bots update
     botsRef.current.forEach((bot, index) => {
         const botSpeed = (bot as any).speed || 0;
         const botX = bot.x || 0;
@@ -282,11 +356,10 @@ export function RaceScreen({
         bot.y = botY + (idealY - botY) * 0.05;
         bot.x = botX + botSpeed;
 
-        if (Math.random() < 0.005) { // Randomly change lane target
+        if (Math.random() < 0.005) {
              (bot as any).offsetY = (Math.random() - 0.5) * (ROAD_WIDTH - 60);
         }
         
-        // Bot-on-bot collision
         for(let j = index + 1; j < botsRef.current.length; j++) {
             const otherBot = botsRef.current[j];
             if (!otherBot.x || !otherBot.y) continue;
@@ -304,8 +377,6 @@ export function RaceScreen({
         }
     });
 
-
-    // UI & Sync
     uiUpdateTimer.current++;
     if (uiUpdateTimer.current % 10 === 0) {
         const allRacers = [
@@ -323,7 +394,7 @@ export function RaceScreen({
     
     draw();
     requestRef.current = requestAnimationFrame(loop);
-  }, [draw, getRoadCurve, playerCar.name, opponents, setGameState, syncMultiplayer, setLapInfo]);
+  }, [getRoadCurve, playerCar.name, opponents, setGameState, syncMultiplayer, setLapInfo, drsState.active]);
 
 
   const addBot = () => {
