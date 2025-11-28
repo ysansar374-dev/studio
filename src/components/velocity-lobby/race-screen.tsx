@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, useCallback } from 'react';
 import type { PlayerCar, Player, Opponent } from '@/types';
-import { ACCELERATION, BASE_ROAD_Y, FRICTION_ROAD, LANE_SPEED, MAX_SPEED_DRS, MAX_SPEED_NORMAL, ROAD_WIDTH, TRACK_LENGTH, WALL_BOUNCE, STEERING_ASSIST_STRENGTH, STEERING_SENSITIVITY, SYNC_INTERVAL } from '@/lib/constants';
+import { ACCELERATION, BASE_ROAD_Y, FRICTION_ROAD, LANE_SPEED, MAX_SPEED_DRS, MAX_SPEED_NORMAL, TRACK_LENGTH, WALL_BOUNCE, STEERING_ASSIST_STRENGTH, STEERING_SENSITIVITY, SYNC_INTERVAL } from '@/lib/constants';
 import { Loader2, LogOut, Plus, Radio, Zap, ShieldAlert, X, Thermometer } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
@@ -21,6 +21,7 @@ type RaceScreenProps = {
   kickPlayer: (playerId: string) => void;
   assistEnabled: boolean;
   onRaceFinish: (leaderboard: Player[]) => void;
+  userId: string;
 };
 
 type RaceStatus = 'countdown' | 'racing' | 'finished';
@@ -44,6 +45,7 @@ export function RaceScreen({
   kickPlayer,
   assistEnabled,
   onRaceFinish,
+  userId
 }: RaceScreenProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const requestRef = useRef<number>();
@@ -90,11 +92,42 @@ export function RaceScreen({
        }
    }, [opponents]);
 
-
+   const getRoadWidth = useCallback((x: number) => {
+    const progress = (x % TRACK_LENGTH) / TRACK_LENGTH;
+    if (progress < 0.1) { // Start wide
+      return 800;
+    } else if (progress < 0.2) { // Narrow down
+      return 800 - (progress - 0.1) * 10 * 400; // 800 -> 400
+    }
+    return 400; // Normal width
+  }, []);
+  
   const getRoadCurve = useCallback((x: number) => {
     const val = x || 0;
-    return BASE_ROAD_Y + Math.sin(val * 0.0008) * 250 + Math.cos(val * 0.002) * 50;
-  }, []);
+    const progress = val / TRACK_LENGTH;
+    let y = BASE_ROAD_Y;
+
+    // Gentle starter curves
+    y += Math.sin(progress * Math.PI * 4) * 100;
+
+    // The "Turn 8" inspired section
+    if (progress > 0.3 && progress < 0.6) {
+        const turn8Progress = (progress - 0.3) / 0.3;
+        y -= Math.sin(turn8Progress * Math.PI * 3) * 300; // First apex
+        y += Math.cos(turn8Progress * Math.PI * 5) * 250; // Second apex
+        y -= Math.sin(turn8Progress * Math.PI * 7) * 200; // Third apex
+    }
+    
+    // A long straight
+    
+    // A final tight hairpin
+    if (progress > 0.8) {
+        const hairpinProgress = (progress - 0.8) / 0.2;
+        y += Math.sin(hairpinProgress * Math.PI) * 500;
+    }
+
+    return y;
+}, []);
 
   const drawCar = useCallback((ctx: CanvasRenderingContext2D, carX: number, carY: number, color: string, name: string, isDrsOpen: boolean, isBraking: boolean, wheelAngle: number, bodyAngle: number) => {
     ctx.save();
@@ -249,11 +282,11 @@ export function RaceScreen({
     ctx.fillStyle = '#37474f';
     for (let i = Math.floor(phys.current.x / 100) * 100 - 4000; i < phys.current.x + 4000; i += 100) {
       const roadY = getRoadCurve(i);
-      ctx.lineTo(i, roadY - ROAD_WIDTH / 2);
+      ctx.lineTo(i, roadY - getRoadWidth(i) / 2);
     }
     for (let i = Math.floor(phys.current.x / 100) * 100 + 4000; i > phys.current.x - 4000; i -= 100) {
       const roadY = getRoadCurve(i);
-      ctx.lineTo(i, roadY + ROAD_WIDTH / 2);
+      ctx.lineTo(i, roadY + getRoadWidth(i) / 2);
     }
     ctx.fill();
 
@@ -262,30 +295,31 @@ export function RaceScreen({
     ctx.lineWidth = 10;
     ctx.beginPath();
     for (let i = Math.floor(phys.current.x / 20) * 20 - 4000; i < phys.current.x + 4000; i += 20) {
-      ctx.lineTo(i, getRoadCurve(i) - ROAD_WIDTH / 2);
+      ctx.lineTo(i, getRoadCurve(i) - getRoadWidth(i) / 2);
     }
     ctx.stroke();
     ctx.beginPath();
     for (let i = Math.floor(phys.current.x / 20) * 20 - 4000; i < phys.current.x + 4000; i += 20) {
-      ctx.lineTo(i, getRoadCurve(i) + ROAD_WIDTH / 2);
+      ctx.lineTo(i, getRoadCurve(i) + getRoadWidth(i) / 2);
     }
     ctx.stroke();
 
     const kerb_height = 20;
     for (let i = Math.floor(phys.current.x / 100) * 100 - 4000; i < phys.current.x + 4000; i += 100) {
       const roadY = getRoadCurve(i);
+      const roadW = getRoadWidth(i);
       ctx.fillStyle = (i / 100) % 2 === 0 ? '#ef4444' : 'white';
       ctx.beginPath();
-      ctx.moveTo(i, roadY - ROAD_WIDTH / 2);
-      ctx.lineTo(i + 100, roadY - ROAD_WIDTH / 2);
-      ctx.lineTo(i + 100, roadY - ROAD_WIDTH / 2 - kerb_height);
-      ctx.lineTo(i, roadY - ROAD_WIDTH / 2 - kerb_height);
+      ctx.moveTo(i, roadY - roadW / 2);
+      ctx.lineTo(i + 100, roadY - roadW / 2);
+      ctx.lineTo(i + 100, roadY - roadW / 2 - kerb_height);
+      ctx.lineTo(i, roadY - roadW / 2 - kerb_height);
       ctx.fill();
     }
     
     // Draw finish line
     if (phys.current.x > TRACK_LENGTH - 500 || phys.current.x < 500) {
-        drawCheckeredLine(ctx, 0, getRoadCurve(0) - ROAD_WIDTH/2, ROAD_WIDTH);
+        drawCheckeredLine(ctx, 0, getRoadCurve(0) - getRoadWidth(0)/2, getRoadWidth(0));
     }
 
     // Draw bots
@@ -295,11 +329,15 @@ export function RaceScreen({
 
     // Draw opponents (interpolated)
      Object.values(interpolatedOpponents.current).forEach(o => {
-      drawCar(ctx, o.current.x || 0, o.current.y || 0, o.current.color, o.current.name, false, false, 0, 0);
+      if (o.current.id !== userId) {
+        drawCar(ctx, o.current.x || 0, o.current.y || 0, o.current.color, o.current.name, false, false, 0, 0);
+      }
     });
 
     // Draw player
-    drawCar(ctx, phys.current.x, phys.current.y, playerCar.color, playerCar.name, drsState.active, inputs.current.brake, phys.current.wheelAngle, phys.current.angle);
+    if (!lapInfo.finished) {
+      drawCar(ctx, phys.current.x, phys.current.y, playerCar.color, playerCar.name, drsState.active, inputs.current.brake, phys.current.wheelAngle, phys.current.angle);
+    }
     
     // Draw sparks
     drawSparks(ctx);
@@ -307,7 +345,7 @@ export function RaceScreen({
     ctx.restore();
     
     drawMiniMap(ctx, screenW, screenH);
-  }, [getRoadCurve, drawCar, drawSparks, playerCar.color, playerCar.name, drsState.active]);
+  }, [getRoadCurve, getRoadWidth, drawCar, drawSparks, playerCar, drsState.active, userId, lapInfo.finished]);
 
 
   const loop = useCallback((time: number) => {
@@ -316,7 +354,25 @@ export function RaceScreen({
     const p = phys.current;
     const i = inputs.current;
     
+    // --- Leaderboard & Catch-up logic ---
+    const allRacers = [
+      ...Object.values(interpolatedOpponents.current).map(o => o.current),
+      ...botsRef.current,
+      { name: playerCar.name, id: userId, x: phys.current.x }
+    ].sort((a, b) => (b.x || 0) - (a.x || 0));
+    
+    const playerRank = allRacers.findIndex(r => r.id === userId);
+    
+    let speedModifier = 1.0;
     if (raceStatus === 'racing') {
+        if (playerRank === 0 && allRacers.length > 1) { // Player is 1st
+            speedModifier = 0.98; // 2% speed reduction
+        } else if (playerRank === allRacers.length - 1 && allRacers.length > 1) { // Player is last
+            speedModifier = 1.02; // 2% speed boost
+        }
+    }
+    
+    if (raceStatus === 'racing' && !lapInfoRef.current.finished) {
       let currentDrsActive = false;
       
       setDrsState(prev => {
@@ -328,7 +384,7 @@ export function RaceScreen({
           }
       });
 
-      const currentMaxSpeed = currentDrsActive ? MAX_SPEED_DRS : MAX_SPEED_NORMAL;
+      const currentMaxSpeed = (currentDrsActive ? MAX_SPEED_DRS : MAX_SPEED_NORMAL) * speedModifier;
 
       let dynamicAccel = ACCELERATION;
       const currentSpeedKmh = p.speed * 10;
@@ -339,7 +395,7 @@ export function RaceScreen({
           dynamicAccel = ACCELERATION * 0.3;
       }
 
-      const currentAccel = currentDrsActive ? dynamicAccel * 1.5 : dynamicAccel;
+      const currentAccel = (currentDrsActive ? dynamicAccel * 1.5 : dynamicAccel) * speedModifier;
 
       if (i.gas) p.speed += currentAccel;
       else p.speed *= FRICTION_ROAD;
@@ -358,6 +414,7 @@ export function RaceScreen({
 
       // --- Steering Logic ---
       const roadCenterY = getRoadCurve(p.x);
+      const currentRoadWidth = getRoadWidth(p.x);
       const carHalfHeight = 20;
       
       const gripModifier = p.tyreTemp > 95 ? 1 + (p.tyreTemp - 95) * 0.08 : 1; // Reduced grip when hot
@@ -397,11 +454,11 @@ export function RaceScreen({
       // --- Collision Logic ---
       p.collision = false;
 
-      if (p.y < roadCenterY - ROAD_WIDTH / 2 + carHalfHeight || p.y > roadCenterY + ROAD_WIDTH / 2 - carHalfHeight) {
+      if (p.y < roadCenterY - currentRoadWidth / 2 + carHalfHeight || p.y > roadCenterY + currentRoadWidth / 2 - carHalfHeight) {
         p.speed *= WALL_BOUNCE;
         p.collision = true;
         const sparkSide = p.y < roadCenterY ? -1 : 1;
-        p.y = roadCenterY + (sparkSide * (ROAD_WIDTH / 2 - carHalfHeight));
+        p.y = roadCenterY + (sparkSide * (currentRoadWidth / 2 - carHalfHeight));
         p.tyreTemp += 2;
         if (!assistEnabled) {
             p.angle *= -0.5; // Bounce off wall
@@ -410,6 +467,7 @@ export function RaceScreen({
       }
       
       const checkAndHandleCollision = (racerA: any, racerB: any) => {
+          if (p.x < 100) return; // Collision grace period
           if (!racerA.x || !racerA.y || !racerB.x || !racerB.y) return;
           const dx = racerA.x - racerB.x;
           const dy = racerA.y - racerB.y;
@@ -445,86 +503,90 @@ export function RaceScreen({
 
       botsRef.current.forEach(bot => checkAndHandleCollision(p, bot));
       Object.values(interpolatedOpponents.current).forEach(opp => checkAndHandleCollision(p, opp.current));
-      
-       // --- Interpolate opponent positions ---
-       const lerpFactor = 0.2; // Adjust for smoothness
-       for (const id in interpolatedOpponents.current) {
-           const ipo = interpolatedOpponents.current[id];
-           if (ipo.current.x !== undefined && ipo.target.x !== undefined) {
-               ipo.current.x += (ipo.target.x - ipo.current.x) * lerpFactor;
-           }
-            if (ipo.current.y !== undefined && ipo.target.y !== undefined) {
-               ipo.current.y += (ipo.target.y - ipo.current.y) * lerpFactor;
-           }
-       }
+    }
+    
+    // --- Interpolate opponent positions ---
+    const lerpFactor = 0.2; // Adjust for smoothness
+    for (const id in interpolatedOpponents.current) {
+        const ipo = interpolatedOpponents.current[id];
+        if (ipo.current.x !== undefined && ipo.target.x !== undefined) {
+            ipo.current.x += (ipo.target.x - ipo.current.x) * lerpFactor;
+        }
+         if (ipo.current.y !== undefined && ipo.target.y !== undefined) {
+            ipo.current.y += (ipo.target.y - ipo.current.y) * lerpFactor;
+        }
+    }
 
 
-      setLapInfo(prev => {
-        if (!gameActive.current || raceStatus !== 'racing') return prev;
-        const newLap = Math.floor(p.x / TRACK_LENGTH) + 1;
+    setLapInfo(prev => {
+        if (!gameActive.current || raceStatus !== 'racing' || prev.finished) return prev;
+        const newLap = Math.floor(phys.current.x / TRACK_LENGTH) + 1;
         if (newLap > prev.current) {
-          if (newLap > prev.total) {
-            if (!prev.finished) {
-              setRaceStatus('finished');
-              const finalLeaderboard = [
-                  ...Object.values(opponentsRef.current),
-                  ...botsRef.current,
-                  { name: playerCar.name, x: phys.current.x, isMe: true, id: 'player', color: playerCar.color, team: playerCar.team, ready: true }
-              ].sort((a, b) => (b.x || 0) - (a.x || 0));
-              onRaceFinish(finalLeaderboard as Player[]);
-              gameActive.current = false;
+            if (newLap > prev.total) {
+                // Player finishes the race
+                const finalLeaderboard = [
+                    ...Object.values(opponentsRef.current),
+                    ...botsRef.current,
+                    { name: playerCar.name, x: phys.current.x, isMe: true, id: userId, color: playerCar.color, team: playerCar.team, ready: true }
+                ].sort((a, b) => (b.x || 0) - (a.x || 0));
+                
+                // Check if all human players have finished
+                const allOpponentsFinished = Object.values(opponentsRef.current).every(opp => (opp.lap || 0) > lapInfo.total);
+
+                if (allOpponentsFinished) {
+                    onRaceFinish(finalLeaderboard as Player[]);
+                    gameActive.current = false;
+                    setRaceStatus('finished');
+                }
+                // Don't stop game, just mark this player as finished
+                return { ...prev, finished: true };
+            } else {
+                return { ...prev, current: newLap };
             }
-            return { ...prev, finished: true };
-          } else {
-            return { ...prev, current: newLap };
-          }
         }
         return prev;
-      });
+    });
+
       
-      botsRef.current.forEach((bot, index) => {
-          const botSpeed = (bot as any).speed || 0;
-          const botX = bot.x || 0;
-          const botY = bot.y || 0;
-          const idealY = getRoadCurve(botX) + ((bot as any).offsetY || 0);
+    botsRef.current.forEach((bot, index) => {
+        const botSpeed = (bot as any).speed || 0;
+        const botX = bot.x || 0;
+        const botY = bot.y || 0;
+        const idealY = getRoadCurve(botX) + ((bot as any).offsetY || 0);
 
-          bot.y = botY + (idealY - botY) * 0.05;
-          bot.x = botX + botSpeed;
+        bot.y = botY + (idealY - botY) * 0.05;
+        bot.x = botX + botSpeed;
 
-          if (Math.random() < 0.005) {
-              (bot as any).offsetY = (Math.random() - 0.5) * (ROAD_WIDTH - 60);
-          }
-          
-          for(let j = index + 1; j < botsRef.current.length; j++) {
-              checkAndHandleCollision(bot, botsRef.current[j]);
-          }
+        if (Math.random() < 0.005) {
+            (bot as any).offsetY = (Math.random() - 0.5) * (getRoadWidth(botX) - 60);
+        }
+        
+        for(let j = index + 1; j < botsRef.current.length; j++) {
+            checkAndHandleCollision(bot, botsRef.current[j]);
+        }
 
-          if (Math.abs(p.x - botX) > 4000) {
-              bot.x = p.x + (Math.random() > 0.5 ? 1 : -1) * (1000 + Math.random() * 500);
-              bot.y = getRoadCurve(bot.x);
-          }
-      });
-    }
+        if (Math.abs(p.x - botX) > 4000) {
+            bot.x = p.x + (Math.random() > 0.5 ? 1 : -1) * (1000 + Math.random() * 500);
+            bot.y = getRoadCurve(bot.x);
+        }
+    });
 
 
     uiUpdateTimer.current++;
     if (uiUpdateTimer.current % 10 === 0) {
-        const allRacers = [
-            ...Object.values(interpolatedOpponents.current).map(o => o.current),
-            ...botsRef.current,
-            { name: playerCar.name, x: phys.current.x, isMe: true, id: 'player' }
-        ].sort((a, b) => (b.x || 0) - (a.x || 0));
         setLeaderboardData(allRacers as Player[]);
     }
     
     if (time - lastSync.current > SYNC_INTERVAL) {
-        syncMultiplayer(phys.current, lapInfoRef.current);
+        if (!lapInfoRef.current.finished) {
+            syncMultiplayer(phys.current, lapInfoRef.current);
+        }
         lastSync.current = time;
     }
     
     draw();
     requestRef.current = requestAnimationFrame(loop);
-  }, [draw, getRoadCurve, playerCar, setLapInfo, syncMultiplayer, assistEnabled, onRaceFinish, raceStatus]);
+  }, [draw, getRoadCurve, getRoadWidth, playerCar, setLapInfo, syncMultiplayer, assistEnabled, onRaceFinish, raceStatus, userId, lapInfo.total]);
 
 
   const addBot = () => {
@@ -536,7 +598,7 @@ export function RaceScreen({
       x: startX - 200 + Math.random() * 400,
       speed: 18 + Math.random() * 4,
       color: randomTeam.color,
-      offsetY: (Math.random() - 0.5) * (ROAD_WIDTH - 60),
+      offsetY: (Math.random() - 0.5) * (getRoadWidth(startX) - 60),
       name: `Bot ${botsRef.current.length + 1}`
     };
     (newBot as any).y = getRoadCurve(newBot.x) + newBot.offsetY;
@@ -577,7 +639,7 @@ export function RaceScreen({
     handleResize();
 
     const hD = (e: KeyboardEvent) => {
-      if (raceStatus !== 'racing') return;
+      if (raceStatus !== 'racing' || lapInfoRef.current.finished) return;
       const key = e.key.toLowerCase();
       if (key === 'w') inputs.current.gas = true;
       if (key === 's') inputs.current.brake = true;
@@ -601,14 +663,36 @@ export function RaceScreen({
     gameActive.current = true;
     requestRef.current = requestAnimationFrame(loop);
 
+    // Check if all players have finished
+    const finishCheckInterval = setInterval(() => {
+        if (raceStatus !== 'racing' || !gameActive.current) return;
+        
+        const allHumansFinished = Object.values(opponentsRef.current).every(opp => (opp.lap || 0) > lapInfo.total) && lapInfoRef.current.finished;
+
+        if (allHumansFinished) {
+            const finalLeaderboard = [
+                ...Object.values(opponentsRef.current),
+                ...botsRef.current,
+                { name: playerCar.name, x: phys.current.x, isMe: true, id: userId, color: playerCar.color, team: playerCar.team, ready: true }
+            ].sort((a, b) => (b.x || 0) - (a.x || 0));
+
+            onRaceFinish(finalLeaderboard as Player[]);
+            gameActive.current = false;
+            setRaceStatus('finished');
+        }
+
+    }, 2000);
+
+
     return () => {
       window.removeEventListener('resize', handleResize);
       window.removeEventListener('keydown', hD);
       window.removeEventListener('keyup', hU);
+      clearInterval(finishCheckInterval);
       gameActive.current = false;
       if (requestRef.current) cancelAnimationFrame(requestRef.current);
     };
-  }, [loop, quitRace, triggerRaceEngineer, drsState, raceStatus]);
+  }, [loop, quitRace, triggerRaceEngineer, drsState, raceStatus, lapInfo.total, onRaceFinish, playerCar, userId]);
 
   const getTyreTempColor = (temp: number) => {
     if (temp > 105) return 'bg-red-600';
@@ -679,11 +763,11 @@ export function RaceScreen({
                  {leaderboardData.slice(0, 6).map((d, i) => {
                      const leaderX = leaderboardData[0]?.x || 0;
                      return (
-                        <div key={d.id || i} className={`flex justify-between items-center p-1 rounded group ${d.isMe ? 'bg-accent/20 text-accent font-bold border-l-2 border-accent' : 'text-foreground'}`}>
+                        <div key={d.id || i} className={`flex justify-between items-center p-1 rounded group ${d.id === userId ? 'bg-accent/20 text-accent font-bold border-l-2 border-accent' : 'text-foreground'}`}>
                             <div className="flex items-center gap-2"><span className="text-muted-foreground w-4">{i + 1}</span><span className="truncate w-24">{d.name}</span></div>
                             <div className="flex items-center gap-2">
                               <span className={i === 0 ? 'text-green-400' : 'text-red-400'}>{i === 0 ? 'LİDER' : `+${Math.floor((leaderX - (d.x || 0)) / 10)}m`}</span>
-                              {isAdmin && !d.isMe && d.id !== 'player' && (
+                              {isAdmin && d.id !== userId && d.id && !d.id.startsWith('bot_') && (
                                 <Button
                                   size="icon"
                                   variant="destructive"

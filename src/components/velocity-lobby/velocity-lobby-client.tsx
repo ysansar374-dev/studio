@@ -43,14 +43,14 @@ export default function VelocityLobbyClient() {
   const [isHost, setIsHost] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
   const [lobbyPlayers, setLobbyPlayers] = useState<Player[]>([]);
-  const [targetLaps, setTargetLaps] = useState(3);
+  const [targetLaps, setTargetLaps] = useState(8);
   const [publicLobbies, setPublicLobbies] = useState<Lobby[]>([]);
   const [lobbiesLoading, setLobbiesLoading] = useState(false);
 
 
   // Race State
   const [opponents, setOpponents] = useState<Record<string, Opponent>>({});
-  const [lapInfo, setLapInfo] = useState({ current: 1, total: 3, finished: false });
+  const [lapInfo, setLapInfo] = useState({ current: 1, total: 8, finished: false });
   const [radioMessage, setRadioMessage] = useState<string | null>(null);
   const [radioLoading, setRadioLoading] = useState(false);
   const [finalLeaderboard, setFinalLeaderboard] = useState<Player[]>([]);
@@ -475,7 +475,7 @@ export default function VelocityLobbyClient() {
     return <LobbyScreen {...{ lobbyCode, lobbyPlayers, isHost, startRaceByHost, quitRace, userId: user?.uid ?? null, isAdmin, kickPlayer }} />;
   }
   if (gameState === 'race') {
-    return <RaceScreen {...{ playerCar, opponents, setGameState, lapInfo, setLapInfo, syncMultiplayer, triggerRaceEngineer, radioMessage, radioLoading, quitRace, isAdmin, kickPlayer, assistEnabled, onRaceFinish }} />;
+    return <RaceScreen {...{ playerCar, opponents, setGameState, lapInfo, setLapInfo, syncMultiplayer, triggerRaceEngineer, radioMessage, radioLoading, quitRace, isAdmin, kickPlayer, assistEnabled, onRaceFinish, userId: user.uid }} />;
   }
   if (gameState === 'finished') {
     return <FinishedScreen playerCar={playerCar} setGameState={setGameState} leaderboard={finalLeaderboard} />;
