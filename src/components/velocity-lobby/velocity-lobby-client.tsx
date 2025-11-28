@@ -4,7 +4,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { initializeApp, type FirebaseApp } from 'firebase/app';
 import { getAuth, signInAnonymously, onAuthStateChanged, User, signInWithCustomToken, Auth } from 'firebase/auth';
-import { getFirestore, collection, doc, setDoc, onSnapshot, serverTimestamp, updateDoc, getDoc, Firestore, writeBatch } from 'firebase/firestore';
+import { getFirestore, collection, doc, setDoc, onSnapshot, serverTimestamp, updateDoc, getDoc, Firestore, writeBatch, getDocs, query } from 'firebase/firestore';
 
 import { MenuScreen } from './menu-screen';
 import { LobbyScreen } from './lobby-screen';
@@ -224,6 +224,11 @@ export default function VelocityLobbyClient() {
       setGameState('lobby');
   };
 
+  const startRaceSequence = useCallback((laps: number) => {
+    setLapInfo({ current: 1, total: laps, finished: false });
+    setGameState('race');
+  }, []);
+
   // Centralized listener for lobby and race data
   useEffect(() => {
     if (!lobbyCode || !user) return;
@@ -266,7 +271,7 @@ export default function VelocityLobbyClient() {
       lobbyUnsub();
       playersUnsub();
     };
-  }, [gameState, lobbyCode, user, getFirebase, config.appId, getLobbyDocRef]);
+  }, [gameState, lobbyCode, user, getFirebase, config.appId, getLobbyDocRef, startRaceSequence]);
 
 
   const startRaceByHost = async () => {
@@ -276,11 +281,6 @@ export default function VelocityLobbyClient() {
     await updateDoc(lobbyDocRef, { status: 'started' });
   };
   
-  const startRaceSequence = (laps: number) => {
-    setLapInfo({ current: 1, total: laps, finished: false });
-    setGameState('race');
-  };
-
   const quitRace = () => {
     setGameState('menu');
     setLobbyCode("");
@@ -291,26 +291,42 @@ export default function VelocityLobbyClient() {
   };
   
   const resetDatabase = async () => {
+    const { db } = getFirebase();
+    if (!db) {
+        toast({ variant: 'destructive', title: "Veritabanı sıfırlanamadı." });
+        return;
+    }
     const lobbiesColRef = getLobbiesCollectionRef();
     if (!lobbiesColRef) {
-      toast({ variant: 'destructive', title: "Veritabanı sıfırlanamadı." });
-      return;
+        toast({ variant: 'destructive', title: "Lobi referansı alınamadı." });
+        return;
     }
+    
+    toast({ title: "Veritabanı sıfırlanıyor...", description: "Lütfen bekleyin." });
+    
     try {
-      const batch = writeBatch(dbRef.current!);
-      // This is a simplified approach. A real-world scenario would need a Cloud Function
-      // to recursively delete subcollections. Firestore security rules prevent client-side
-      // collection deletion. We'll just delete the lobby doc itself.
-      const lobbyDocRef = getLobbyDocRef(lobbyCode);
-      if (lobbyDocRef) {
-        batch.delete(lobbyDocRef);
-      }
-      await batch.commit();
-      toast({ title: "Veritabanı Sıfırlandı", description: "Tüm lobi verileri silindi." });
-      quitRace();
+        const querySnapshot = await getDocs(query(lobbiesColRef));
+        const batch = writeBatch(db);
+        
+        if (querySnapshot.empty) {
+            toast({ title: "Veritabanı zaten boş.", description: "Silinecek lobi bulunamadı." });
+            return;
+        }
+
+        querySnapshot.forEach((doc) => {
+            // NOTE: This does not delete subcollections (players).
+            // For a full wipe, a Cloud Function is needed. This is a best-effort client-side wipe.
+            batch.delete(doc.ref);
+        });
+
+        await batch.commit();
+        
+        toast({ title: "Veritabanı Sıfırlandı", description: `${querySnapshot.size} lobi başarıyla silindi.` });
+        quitRace();
+
     } catch (error) {
-      console.error("Error resetting database:", error);
-      toast({ variant: 'destructive', title: "Sıfırlama Hatası", description: "Veritabanı temizlenirken bir hata oluştu." });
+        console.error("Error resetting database:", error);
+        toast({ variant: 'destructive', title: "Sıfırlama Hatası", description: "Veritabanı temizlenirken bir hata oluştu." });
     }
   };
 
