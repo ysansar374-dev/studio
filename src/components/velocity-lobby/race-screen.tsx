@@ -39,7 +39,7 @@ export function RaceScreen({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const requestRef = useRef<number>();
   const gameActive = useRef(true);
-  const phys = useRef({ x: 0, y: BASE_ROAD_Y, speed: 0, collision: false });
+  const phys = useRef({ x: 0, y: BASE_ROAD_Y, speed: 0, collision: false, wheelAngle: 0 });
   const inputs = useRef({ gas: false, brake: false, left: false, right: false, drs: false });
   const botsRef = useRef<Player[]>([]);
   const lastSync = useRef(0);
@@ -60,7 +60,7 @@ export function RaceScreen({
     return BASE_ROAD_Y + Math.sin(val * 0.0008) * 250 + Math.cos(val * 0.002) * 50;
   }, []);
 
-  const drawCar = useCallback((ctx: CanvasRenderingContext2D, x: number, y: number, color: string, name: string, isDrsOpen: boolean, isBraking: boolean) => {
+  const drawCar = useCallback((ctx: CanvasRenderingContext2D, x: number, y: number, color: string, name: string, isDrsOpen: boolean, isBraking: boolean, wheelAngle: number) => {
     ctx.save();
     ctx.translate(x, y);
     const slope = (getRoadCurve(phys.current.x + 20) - getRoadCurve(phys.current.x)) / 20;
@@ -86,10 +86,31 @@ export function RaceScreen({
 
     ctx.fillStyle = '#1e293b'; ctx.fillRect(45, 5, 10, 4);
     ctx.fillStyle = '#0f172a';
-    ctx.beginPath(); ctx.roundRect(20, -22, 16, 8, 2); ctx.fill();
-    ctx.beginPath(); ctx.roundRect(20, 14, 16, 8, 2); ctx.fill();
-    ctx.beginPath(); ctx.roundRect(-50, -24, 20, 10, 3); ctx.fill();
-    ctx.beginPath(); ctx.roundRect(-50, 14, 20, 10, 3); ctx.fill();
+
+    // Wheels
+    const drawWheel = (wx: number, wy: number, width: number, height: number) => {
+        ctx.beginPath();
+        ctx.roundRect(wx, wy, width, height, 3);
+        ctx.fill();
+        ctx.strokeStyle = '#4a4a4a';
+        ctx.lineWidth = 1;
+        const spokeAngle = wheelAngle;
+        const centerX = wx + width / 2;
+        const centerY = wy + height / 2;
+        ctx.beginPath();
+        ctx.moveTo(centerX, centerY - height/2);
+        ctx.lineTo(centerX, centerY + height/2);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(centerX - width/2, centerY);
+        ctx.lineTo(centerX + width/2, centerY);
+        ctx.stroke();
+    };
+    
+    drawWheel(20, -22, 16, 8); // Front-Top
+    drawWheel(20, 14, 16, 8); // Front-Bottom
+    drawWheel(-50, -24, 20, 10); // Back-Top
+    drawWheel(-50, 14, 20, 10); // Back-Bottom
 
     if (isBraking) {
         ctx.fillStyle = '#ff0000'; ctx.shadowColor = '#ff0000'; ctx.shadowBlur = 15;
@@ -226,16 +247,16 @@ export function RaceScreen({
 
     // Draw bots
     botsRef.current.forEach(bot => {
-      drawCar(ctx, bot.x || 0, bot.y || 0, bot.color, bot.name, false, false);
+      drawCar(ctx, bot.x || 0, bot.y || 0, bot.color, bot.name, false, false, phys.current.wheelAngle);
     });
 
     // Draw opponents
     Object.values(opponents).forEach(o => {
-      drawCar(ctx, o.x || 0, o.y || 0, o.color, o.name, false, false);
+      drawCar(ctx, o.x || 0, o.y || 0, o.color, o.name, false, false, phys.current.wheelAngle);
     });
 
     // Draw player
-    drawCar(ctx, phys.current.x, phys.current.y, playerCar.color, playerCar.name, drsState.active, inputs.current.brake);
+    drawCar(ctx, phys.current.x, phys.current.y, playerCar.color, playerCar.name, drsState.active, inputs.current.brake, phys.current.wheelAngle);
     
     // Draw sparks
     drawSparks(ctx);
@@ -329,6 +350,7 @@ export function RaceScreen({
 
     p.speed = Math.max(0, Math.min(p.speed, currentMaxSpeed));
     p.x += p.speed;
+    p.wheelAngle += p.speed * 0.05;
 
     setLapInfo(prev => {
       if (!gameActive.current) return prev;
@@ -394,7 +416,7 @@ export function RaceScreen({
     
     draw();
     requestRef.current = requestAnimationFrame(loop);
-  }, [getRoadCurve, playerCar.name, opponents, setGameState, syncMultiplayer, setLapInfo, drsState.active]);
+  }, [draw, getRoadCurve, playerCar.name, opponents, setGameState, syncMultiplayer, setLapInfo, drsState.active]);
 
 
   const addBot = () => {

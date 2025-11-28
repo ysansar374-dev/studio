@@ -27,3 +27,13 @@ export type Player = {
 export type Opponent = Omit<Player, 'isMe'>;
 
 export type GameState = 'menu' | 'lobby' | 'race' | 'finished';
+
+export type Lobby = {
+    id: string;
+    hostId: string;
+    status: 'waiting' | 'started';
+    createdAt: any;
+    laps: number;
+    public: boolean;
+    playerCount: number;
+}

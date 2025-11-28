@@ -4,7 +4,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { initializeApp, type FirebaseApp } from 'firebase/app';
 import { getAuth, signInAnonymously, onAuthStateChanged, User, signInWithCustomToken, Auth } from 'firebase/auth';
-import { getFirestore, collection, doc, setDoc, onSnapshot, serverTimestamp, updateDoc, getDoc, Firestore, writeBatch, getDocs, query, deleteDoc } from 'firebase/firestore';
+import { getFirestore, collection, doc, setDoc, onSnapshot, serverTimestamp, updateDoc, getDoc, Firestore, writeBatch, getDocs, query, deleteDoc, where, limit } from 'firebase/firestore';
 
 import { MenuScreen } from './menu-screen';
 import { LobbyScreen } from './lobby-screen';
@@ -13,7 +13,7 @@ import { FinishedScreen } from './finished-screen';
 import { generateTeamName as generateTeamNameAction, getRaceEngineerMessage } from '@/app/actions';
 import { TEAMS } from '@/lib/constants';
 import { useFirebaseConfig } from '@/lib/firebase';
-import type { PlayerCar, Player, Opponent } from '@/types';
+import type { PlayerCar, Player, Opponent, Lobby } from '@/types';
 import { useToast } from '@/hooks/use-toast';
 import { Loader2 } from 'lucide-react';
 
@@ -42,6 +42,9 @@ export default function VelocityLobbyClient() {
   const [isAdmin, setIsAdmin] = useState(false);
   const [lobbyPlayers, setLobbyPlayers] = useState<Player[]>([]);
   const [targetLaps, setTargetLaps] = useState(3);
+  const [publicLobbies, setPublicLobbies] = useState<Lobby[]>([]);
+  const [lobbiesLoading, setLobbiesLoading] = useState(false);
+
 
   // Race State
   const [opponents, setOpponents] = useState<Record<string, Opponent>>({});
@@ -89,15 +92,6 @@ export default function VelocityLobbyClient() {
   const startRaceSequence = useCallback((laps: number) => {
     setLapInfo({ current: 1, total: laps, finished: false });
     setGameState('race');
-  }, []);
-
-  const quitRace = useCallback(() => {
-    setGameState('menu');
-    setLobbyCode("");
-    setInputLobbyCode("");
-    setLobbyPlayers([]);
-    setOpponents({});
-    setIsHost(false);
   }, []);
 
   // --- Initialization ---
@@ -150,6 +144,16 @@ export default function VelocityLobbyClient() {
     return () => unsub();
   }, [config, toast, getFirebase]);
 
+  const quitRace = useCallback(() => {
+    setGameState('menu');
+    setLobbyCode("");
+    setInputLobbyCode("");
+    setLobbyPlayers([]);
+    setOpponents({});
+    setIsHost(false);
+  }, []);
+
+
   // Centralized listener for lobby and race data
   useEffect(() => {
     if (!lobbyCode || !user) return;
@@ -166,11 +170,9 @@ export default function VelocityLobbyClient() {
         quitRace();
         return;
       }
-      if (doc.exists() && gameState === 'lobby') {
-        const data = doc.data();
-        if (data.status === 'started') {
-          startRaceSequence(data.laps || 3);
-        }
+      const data = doc.data();
+      if (data.status === 'started' && gameState === 'lobby') {
+        startRaceSequence(data.laps || 3);
       }
     });
 
@@ -184,8 +186,7 @@ export default function VelocityLobbyClient() {
         players.push(playerData);
         if (d.id === user.uid) {
           playerExists = true;
-        }
-        if (d.id !== user.uid) {
+        } else {
           opps[d.id] = playerData as Opponent;
         }
       });
@@ -195,7 +196,7 @@ export default function VelocityLobbyClient() {
         quitRace();
         return;
       }
-
+      
       setLobbyPlayers(players);
       if (gameState === 'race') {
         setOpponents(opps);
@@ -250,17 +251,21 @@ export default function VelocityLobbyClient() {
       hostId: user.uid,
       status: 'waiting',
       createdAt: serverTimestamp(),
-      laps: targetLaps
+      laps: targetLaps,
+      public: true,
+      playerCount: 1,
     });
     await joinLobbyInternal(code, user.uid, true);
   };
 
-  const joinLobby = async () => {
+  const joinLobby = async (code?: string) => {
     const { db } = getFirebase();
-    if (!user || !inputLobbyCode || !db) return;
-    const code = inputLobbyCode.trim().toUpperCase();
+    const lobbyId = code || inputLobbyCode;
+    if (!user || !lobbyId || !db) return;
+    
+    const finalCode = lobbyId.trim().toUpperCase();
 
-    const lobbyDocRef = getLobbyDocRef(code);
+    const lobbyDocRef = getLobbyDocRef(finalCode);
     if (!lobbyDocRef) return;
 
     const lobbyDoc = await getDoc(lobbyDocRef);
@@ -272,12 +277,20 @@ export default function VelocityLobbyClient() {
     setTargetLaps(lobbyDoc.data().laps || 3);
     const isLobbyHost = lobbyDoc.data().hostId === user.uid;
 
-    await joinLobbyInternal(code, user.uid, isLobbyHost);
+    await joinLobbyInternal(finalCode, user.uid, isLobbyHost);
   };
 
   const joinLobbyInternal = async (code: string, uid: string, isLobbyHost: boolean) => {
+    const { db } = getFirebase();
+    if (!db) return;
+    
     const playerRef = getPlayerDocRef(code, uid);
     if (!playerRef) return;
+
+    const lobbyRef = getLobbyDocRef(code);
+    if (!lobbyRef) return;
+
+    const playersSnap = await getDocs(collection(lobbyRef, 'players'));
 
     await setDoc(playerRef, {
       name: playerCar.name,
@@ -290,6 +303,8 @@ export default function VelocityLobbyClient() {
       lap: 1
     });
 
+    await updateDoc(lobbyRef, { playerCount: playersSnap.size + 1 });
+
     setLobbyCode(code);
     setIsHost(isLobbyHost);
     setGameState('lobby');
@@ -301,6 +316,34 @@ export default function VelocityLobbyClient() {
     if (!lobbyDocRef) return;
     await updateDoc(lobbyDocRef, { status: 'started' });
   };
+  
+  const refreshLobbies = useCallback(async () => {
+    const lobbiesColRef = getLobbiesCollectionRef();
+    if (!lobbiesColRef) return;
+
+    setLobbiesLoading(true);
+    try {
+        const q = query(lobbiesColRef, where('public', '==', true), where('status', '==', 'waiting'), limit(10));
+        const snap = await getDocs(q);
+        const lobbies: Lobby[] = [];
+        snap.forEach(doc => {
+            lobbies.push({ id: doc.id, ...doc.data() } as Lobby);
+        });
+        setPublicLobbies(lobbies);
+    } catch(e) {
+        console.error("Error fetching public lobbies:", e);
+        toast({ variant: "destructive", title: "Lobiler alınamadı" });
+    } finally {
+        setLobbiesLoading(false);
+    }
+  }, [getLobbiesCollectionRef, toast]);
+
+  useEffect(() => {
+    if (gameState === 'menu') {
+        refreshLobbies();
+    }
+  }, [gameState, refreshLobbies]);
+
 
   const handleAdminLogin = useCallback(() => {
     if (isAdmin) {
@@ -393,7 +436,7 @@ export default function VelocityLobbyClient() {
   }
 
   if (gameState === 'menu') {
-    return <MenuScreen {...{ playerCar, setPlayerCar, aiLoading, generateTeamName, inputLobbyCode, setInputLobbyCode, joinLobby, createLobby, connectionStatus, resetDatabase, isAdmin, handleAdminLogin }} />;
+    return <MenuScreen {...{ playerCar, setPlayerCar, aiLoading, generateTeamName, inputLobbyCode, setInputLobbyCode, joinLobby, createLobby, connectionStatus, resetDatabase, isAdmin, handleAdminLogin, publicLobbies, refreshLobbies, lobbiesLoading }} />;
   }
   if (gameState === 'lobby') {
     return <LobbyScreen {...{ lobbyCode, lobbyPlayers, isHost, startRaceByHost, quitRace, userId: user?.uid ?? null, isAdmin, kickPlayer }} />;

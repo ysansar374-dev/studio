@@ -1,12 +1,13 @@
 'use client';
 
-import { Check, Loader2, LogIn, PlusCircle, Settings, Users, Gamepad2, Trash2, ShieldCheck } from "lucide-react";
+import { Check, Loader2, LogIn, PlusCircle, Settings, Users, Gamepad2, Trash2, ShieldCheck, RefreshCw } from "lucide-react";
 import { TEAMS } from "@/lib/constants";
-import type { PlayerCar, Team } from "@/types";
+import type { PlayerCar, Team, Lobby } from "@/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
+import { ScrollArea } from "@/components/ui/scroll-area";
 
 type MenuScreenProps = {
   playerCar: PlayerCar;
@@ -15,12 +16,15 @@ type MenuScreenProps = {
   generateTeamName: () => void;
   inputLobbyCode: string;
   setInputLobbyCode: (code: string) => void;
-  joinLobby: () => void;
+  joinLobby: (code?: string) => void;
   createLobby: () => void;
   connectionStatus: string;
   resetDatabase: () => void;
   isAdmin: boolean;
   handleAdminLogin: () => void;
+  publicLobbies: Lobby[];
+  refreshLobbies: () => void;
+  lobbiesLoading: boolean;
 };
 
 const Controls = () => (
@@ -43,7 +47,7 @@ const Controls = () => (
     </Card>
 );
 
-export function MenuScreen({ playerCar, setPlayerCar, aiLoading, generateTeamName, inputLobbyCode, setInputLobbyCode, joinLobby, createLobby, connectionStatus, resetDatabase, isAdmin, handleAdminLogin }: MenuScreenProps) {
+export function MenuScreen({ playerCar, setPlayerCar, aiLoading, generateTeamName, inputLobbyCode, setInputLobbyCode, joinLobby, createLobby, connectionStatus, resetDatabase, isAdmin, handleAdminLogin, publicLobbies, refreshLobbies, lobbiesLoading }: MenuScreenProps) {
 
   const selectTeam = (team: Team) => {
     setPlayerCar({ ...playerCar, color: team.color, team: team.name, teamId: team.id });
@@ -53,8 +57,8 @@ export function MenuScreen({ playerCar, setPlayerCar, aiLoading, generateTeamNam
 
   return (
     <div className="h-screen bg-background flex items-center justify-center text-foreground font-sans p-4">
-      <div className="bg-card/80 backdrop-blur-md p-8 sm:p-10 rounded-2xl shadow-2xl max-w-5xl w-full border grid grid-cols-1 md:grid-cols-2 gap-12">
-        <div>
+      <div className="bg-card/80 backdrop-blur-md p-8 sm:p-10 rounded-2xl shadow-2xl max-w-7xl w-full border grid grid-cols-1 lg:grid-cols-3 gap-12">
+        <div className="lg:col-span-1">
           <h1 className="text-5xl sm:text-6xl font-black text-transparent bg-clip-text bg-gradient-to-r from-primary to-accent italic tracking-tighter mb-2 font-headline">VELOCITY LOBBY</h1>
           <h2 className="text-lg sm:text-xl text-muted-foreground tracking-widest mb-8 font-bold flex items-center gap-2"><Gamepad2 className="text-accent" />LOBBY EDITION</h2>
 
@@ -79,33 +83,63 @@ export function MenuScreen({ playerCar, setPlayerCar, aiLoading, generateTeamNam
           </div>
         </div>
 
-        <div className="flex flex-col justify-between">
-          <Card className="bg-muted/30">
-            <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-base"><Users size={16}/> Lobiye Katıl</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-                <div className="flex gap-2">
-                    <Input
-                        value={inputLobbyCode}
-                        onChange={e => setInputLobbyCode(e.target.value.toUpperCase())}
-                        placeholder="LOBİ KODU"
-                        className="flex-1 font-code text-center tracking-widest uppercase"
-                        maxLength={6}
-                    />
-                    <Button onClick={joinLobby} className="font-bold"><LogIn size={16}/> KATIL</Button>
-                </div>
-                <div className="relative flex py-2 items-center">
-                    <div className="flex-grow border-t"></div>
-                    <span className="flex-shrink-0 mx-4 text-muted-foreground text-xs">VEYA</span>
-                    <div className="flex-grow border-t"></div>
-                </div>
-                <Button onClick={createLobby} variant="secondary" className="w-full font-bold">
-                    <PlusCircle size={16} /> YENİ LOBİ OLUŞTUR
-                </Button>
-            </CardContent>
-          </Card>
-          
+        <div className="lg:col-span-2 flex flex-col justify-between">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                <Card className="bg-muted/30">
+                    <CardHeader>
+                        <CardTitle className="flex items-center gap-2 text-base"><Users size={16}/> Lobiye Katıl</CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                        <div className="flex gap-2">
+                            <Input
+                                value={inputLobbyCode}
+                                onChange={e => setInputLobbyCode(e.target.value.toUpperCase())}
+                                placeholder="LOBİ KODU"
+                                className="flex-1 font-code text-center tracking-widest uppercase"
+                                maxLength={6}
+                            />
+                            <Button onClick={() => joinLobby()} className="font-bold"><LogIn size={16}/> KATIL</Button>
+                        </div>
+                        <div className="relative flex py-2 items-center">
+                            <div className="flex-grow border-t"></div>
+                            <span className="flex-shrink-0 mx-4 text-muted-foreground text-xs">VEYA</span>
+                            <div className="flex-grow border-t"></div>
+                        </div>
+                        <Button onClick={createLobby} variant="secondary" className="w-full font-bold">
+                            <PlusCircle size={16} /> YENİ LOBİ OLUŞTUR
+                        </Button>
+                    </CardContent>
+                </Card>
+
+                <Card className="bg-muted/30">
+                    <CardHeader>
+                        <CardTitle className="flex items-center justify-between text-base">
+                            <div className="flex items-center gap-2"><Users size={16}/> Herkese Açık Lobiler</div>
+                            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={refreshLobbies} disabled={lobbiesLoading}>
+                                {lobbiesLoading ? <Loader2 className="h-4 w-4 animate-spin"/> : <RefreshCw className="h-4 w-4"/>}
+                            </Button>
+                        </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                        <ScrollArea className="h-40">
+                            {lobbiesLoading && <div className="text-muted-foreground text-sm text-center pt-12">Lobiler aranıyor...</div>}
+                            {!lobbiesLoading && publicLobbies.length === 0 && <div className="text-muted-foreground text-sm text-center pt-12">Aktif lobi bulunamadı.</div>}
+                            <div className="space-y-2">
+                            {publicLobbies.map(lobby => (
+                                <button key={lobby.id} onClick={() => joinLobby(lobby.id)} className="w-full text-left flex items-center p-2 rounded-lg border bg-muted/50 border-border hover:bg-muted transition-all">
+                                    <span className="font-code font-bold text-accent">{lobby.id}</span>
+                                    <div className="flex items-center gap-1 ml-auto text-xs text-muted-foreground">
+                                        <Users size={12}/>
+                                        <span>{lobby.playerCount || 0}/8</span>
+                                    </div>
+                                </button>
+                            ))}
+                            </div>
+                        </ScrollArea>
+                    </CardContent>
+                </Card>
+            </div>
+
           <Controls />
           
           <div className="flex justify-between items-center text-xs text-muted-foreground mt-4 font-code">
