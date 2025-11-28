@@ -165,62 +165,6 @@ export function RaceScreen({
     });
   }, []);
 
-  const draw = useCallback(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    const { width, height } = canvas;
-    const camX = phys.current.x - 300;
-    const camY = phys.current.y - height / 2;
-
-    ctx.clearRect(0, 0, width, height);
-    ctx.fillStyle = 'hsl(var(--background))'; ctx.fillRect(0, 0, width, height);
-
-    ctx.save();
-    ctx.translate(0, -camY);
-
-    const SEGMENT_WIDTH = 20;
-    const DRAW_DISTANCE = width + 200;
-
-    for (let sx = -SEGMENT_WIDTH; sx < DRAW_DISTANCE; sx += SEGMENT_WIDTH) {
-      const worldX = Math.floor(camX + sx);
-      if (sx < -100) continue;
-      const y1 = getRoadCurve(worldX);
-      const y2 = getRoadCurve(worldX + SEGMENT_WIDTH);
-      
-      ctx.fillStyle = '#15803d'; // Grass
-      ctx.beginPath(); ctx.moveTo(sx, y1 - 2000); ctx.lineTo(sx + SEGMENT_WIDTH, y2 - 2000);
-      ctx.lineTo(sx + SEGMENT_WIDTH, y2 + 2000); ctx.lineTo(sx, y1 + 2000); ctx.fill();
-      
-      ctx.fillStyle = '#334155'; // Road
-      ctx.beginPath(); ctx.moveTo(sx, y1 - ROAD_WIDTH / 2); ctx.lineTo(sx + SEGMENT_WIDTH, y2 - ROAD_WIDTH / 2);
-      ctx.lineTo(sx + SEGMENT_WIDTH, y2 + ROAD_WIDTH / 2); ctx.lineTo(sx, y1 + ROAD_WIDTH / 2); ctx.fill();
-      
-      ctx.fillStyle = Math.floor(worldX / 400) % 2 === 0 ? '#dc2626' : '#f8fafc';
-      ctx.fillRect(sx, y1 - ROAD_WIDTH / 2 - 15, SEGMENT_WIDTH + 1, 15);
-      ctx.fillRect(sx, y1 + ROAD_WIDTH / 2, SEGMENT_WIDTH + 1, 15);
-
-      if (((worldX % TRACK_LENGTH) + TRACK_LENGTH) % TRACK_LENGTH < SEGMENT_WIDTH && Math.abs(worldX) > 100) {
-        drawCheckeredLine(ctx, sx, y1 - ROAD_WIDTH / 2, ROAD_WIDTH);
-      }
-    }
-    ctx.restore();
-
-    ctx.save();
-    ctx.translate(-camX, -camY);
-    botsRef.current.forEach(bot => drawCar(ctx, bot.x || 0, bot.y || 0, bot.color, bot.name, false, false));
-    Object.values(opponents).forEach(opp => {
-      drawCar(ctx, opp.x || 0, opp.y || getRoadCurve(opp.x || 0), opp.color, opp.name, false, false);
-    });
-    drawCar(ctx, phys.current.x, phys.current.y, playerCar.color, "SEN", drsState.active, inputs.current.brake);
-    drawSparks(ctx);
-    ctx.restore();
-
-    drawMiniMap(ctx, width, height);
-  }, [playerCar.color, opponents, getRoadCurve, drawCar, drawSparks, drsState.active]);
-
   const loop = useCallback(() => {
     if (!gameActive.current) return;
 
@@ -261,8 +205,8 @@ export function RaceScreen({
       createSparks(p.x - 60, p.y + (sparkSide * 15), 10);
     }
     
-    // Ghosting for the first 1000 units (approx. 100 meters)
-    if (p.x > 1000) {
+    // Ghosting for the first 300 units
+    if (p.x > 300) {
         // Collision with bots
         botsRef.current.forEach(bot => {
             if (!bot.x || !bot.y) return;
@@ -274,8 +218,8 @@ export function RaceScreen({
                 (bot as any).speed *= 0.9;
                 
                 const overlap = 80 - distance;
-                const pushX = (dx / distance) * overlap * 0.8;
-                const pushY = (dy / distance) * overlap * 0.8;
+                const pushX = (dx / distance) * overlap * 1.2;
+                const pushY = (dy / distance) * overlap * 1.2;
                 p.x += pushX;
                 p.y += pushY;
                 bot.x -= pushX;
@@ -298,8 +242,8 @@ export function RaceScreen({
                 
                 // Apply a stronger bounce effect to prevent getting stuck
                 const overlap = 80 - distance;
-                const pushX = (dx / distance) * overlap * 0.8; 
-                const pushY = (dy / distance) * overlap * 0.8;
+                const pushX = (dx / distance) * overlap * 1.2; 
+                const pushY = (dy / distance) * overlap * 1.2;
                 p.x += pushX;
                 p.y += pushY;
                 
@@ -372,7 +316,7 @@ export function RaceScreen({
         setLeaderboardData(allRacers as Player[]);
     }
     
-    if (Date.now() - lastSync.current > 500) {
+    if (Date.now() - lastSync.current > 2000) {
         syncMultiplayer(phys.current, lapInfoRef.current);
         lastSync.current = Date.now();
     }
@@ -475,7 +419,7 @@ export function RaceScreen({
                             <div className="flex items-center gap-2"><span className="text-muted-foreground w-4">{i + 1}</span><span className="truncate w-24">{d.name}</span></div>
                             <div className="flex items-center gap-2">
                               <span className={i === 0 ? 'text-green-400' : 'text-red-400'}>{i === 0 ? 'LİDER' : `+${Math.floor((leaderX - (d.x || 0)) / 10)}m`}</span>
-                              {isAdmin && !d.isMe && (
+                              {isAdmin && !d.isMe && d.id !== 'player' && (
                                 <Button
                                   size="icon"
                                   variant="destructive"

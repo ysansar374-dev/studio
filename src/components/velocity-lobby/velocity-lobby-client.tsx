@@ -67,11 +67,6 @@ export default function VelocityLobbyClient() {
     }
     return { app: null, auth: null, db: null };
   }, [config.config]);
-
-  const startRaceSequence = useCallback((laps: number) => {
-    setLapInfo({ current: 1, total: laps, finished: false });
-    setGameState('race');
-  }, []);
   
   const getLobbyDocRef = useCallback((code: string) => {
     const { db } = getFirebase();
@@ -90,6 +85,11 @@ export default function VelocityLobbyClient() {
      if (!db || !config.appId) return null;
      return doc(db, 'artifacts', config.appId, 'public', 'data', 'lobbies', lobbyCode, 'players', playerId);
   }, [config.appId, getFirebase]);
+
+  const startRaceSequence = useCallback((laps: number) => {
+    setLapInfo({ current: 1, total: laps, finished: false });
+    setGameState('race');
+  }, []);
 
   const quitRace = useCallback(() => {
     setGameState('menu');
