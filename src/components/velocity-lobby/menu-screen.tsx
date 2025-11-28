@@ -1,11 +1,12 @@
 'use client';
 
-import { Check, Loader2, LogIn, PlusCircle, Settings, Users, Gamepad2 } from "lucide-react";
+import { Check, Loader2, LogIn, PlusCircle, Settings, Users, Gamepad2, Trash2 } from "lucide-react";
 import { TEAMS } from "@/lib/constants";
 import type { PlayerCar, Team } from "@/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 
 type MenuScreenProps = {
   playerCar: PlayerCar;
@@ -17,6 +18,7 @@ type MenuScreenProps = {
   joinLobby: () => void;
   createLobby: () => void;
   connectionStatus: string;
+  resetDatabase: () => void;
 };
 
 const Controls = () => (
@@ -39,7 +41,7 @@ const Controls = () => (
     </Card>
 );
 
-export function MenuScreen({ playerCar, setPlayerCar, aiLoading, generateTeamName, inputLobbyCode, setInputLobbyCode, joinLobby, createLobby, connectionStatus }: MenuScreenProps) {
+export function MenuScreen({ playerCar, setPlayerCar, aiLoading, generateTeamName, inputLobbyCode, setInputLobbyCode, joinLobby, createLobby, connectionStatus, resetDatabase }: MenuScreenProps) {
 
   const selectTeam = (team: Team) => {
     setPlayerCar({ ...playerCar, color: team.color, team: team.name, teamId: team.id });
@@ -104,10 +106,32 @@ export function MenuScreen({ playerCar, setPlayerCar, aiLoading, generateTeamNam
           
           <Controls />
           
-          <div className="text-center text-xs text-muted-foreground mt-4 font-code">
-            Durum: <span className={connectionColor}>
-              {connectionStatus === 'connected' ? 'SUNUCUYA BAĞLI' : connectionStatus === 'error' ? 'BAĞLANTI HATASI' : 'BAĞLANIYOR...'}
-            </span>
+          <div className="flex justify-between items-center text-xs text-muted-foreground mt-4 font-code">
+            <div>
+              Durum: <span className={connectionColor}>
+                {connectionStatus === 'connected' ? 'SUNUCUYA BAĞLI' : connectionStatus === 'error' ? 'BAĞLANTI HATASI' : 'BAĞLANIYOR...'}
+              </span>
+            </div>
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button variant="destructive" size="sm" className="text-xs">
+                  <Trash2 className="mr-2 h-3 w-3" />
+                  Veritabanını Sıfırla
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Emin misiniz?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    Bu işlem tüm lobi verilerini kalıcı olarak silecektir. Bu eylem geri alınamaz.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>İptal</AlertDialogCancel>
+                  <AlertDialogAction onClick={resetDatabase}>Onayla ve Sil</AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
           </div>
         </div>
       </div>

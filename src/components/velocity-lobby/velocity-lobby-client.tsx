@@ -4,7 +4,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { initializeApp, type FirebaseApp } from 'firebase/app';
 import { getAuth, signInAnonymously, onAuthStateChanged, User, signInWithCustomToken, Auth } from 'firebase/auth';
-import { getFirestore, collection, doc, setDoc, onSnapshot, serverTimestamp, updateDoc, getDoc, Firestore } from 'firebase/firestore';
+import { getFirestore, collection, doc, setDoc, onSnapshot, serverTimestamp, updateDoc, getDoc, Firestore, writeBatch } from 'firebase/firestore';
 
 import { MenuScreen } from './menu-screen';
 import { LobbyScreen } from './lobby-screen';
@@ -151,6 +151,13 @@ export default function VelocityLobbyClient() {
     if (!db || !config.appId) return null;
     return doc(db, 'artifacts', config.appId, 'public', 'data', 'lobbies', code);
   }, [config.appId, getFirebase]);
+  
+  const getLobbiesCollectionRef = useCallback(() => {
+    const { db } = getFirebase();
+    if (!db || !config.appId) return null;
+    return collection(db, 'artifacts', config.appId, 'public', 'data', 'lobbies');
+  }, [config.appId, getFirebase]);
+
 
   const getPlayerDocRef = useCallback((lobbyCode: string, playerId: string) => {
      const { db } = getFirebase();
@@ -217,9 +224,9 @@ export default function VelocityLobbyClient() {
       setGameState('lobby');
   };
 
-  // Lobby state listener
+  // Centralized listener for lobby and race data
   useEffect(() => {
-    if (gameState !== 'lobby' || !lobbyCode || !user) return;
+    if (!lobbyCode || !user) return;
     
     const { db } = getFirebase();
     if (!db || !config.appId) return;
@@ -228,7 +235,7 @@ export default function VelocityLobbyClient() {
     if (!lobbyDocRef) return;
 
     const lobbyUnsub = onSnapshot(lobbyDocRef, (doc) => {
-      if (doc.exists()) {
+      if (doc.exists() && gameState === 'lobby') {
         const data = doc.data();
         if (data.status === 'started') {
           startRaceSequence(data.laps || 3);
@@ -239,10 +246,20 @@ export default function VelocityLobbyClient() {
     const playersCol = collection(db, 'artifacts', config.appId, 'public', 'data', 'lobbies', lobbyCode, 'players');
     const playersUnsub = onSnapshot(playersCol, (snap) => {
       const players: Player[] = [];
+      const opps: Record<string, Opponent> = {};
       snap.forEach(d => {
-        players.push({ id: d.id, ...d.data() } as Player);
+        const playerData = { id: d.id, ...d.data() } as Player;
+        players.push(playerData);
+        if (d.id !== user.uid) {
+          opps[d.id] = playerData as Opponent;
+        }
       });
-      setLobbyPlayers(players);
+
+      if (gameState === 'lobby') {
+        setLobbyPlayers(players);
+      } else if (gameState === 'race') {
+        setOpponents(opps);
+      }
     });
 
     return () => {
@@ -250,29 +267,6 @@ export default function VelocityLobbyClient() {
       playersUnsub();
     };
   }, [gameState, lobbyCode, user, getFirebase, config.appId, getLobbyDocRef]);
-
-  // Race state listener
-  useEffect(() => {
-    if (gameState !== 'race' || !lobbyCode || !user) return;
-    
-    const { db } = getFirebase();
-    if (!db || !config.appId) return;
-
-    const playersCol = collection(db, 'artifacts', config.appId, 'public', 'data', 'lobbies', lobbyCode, 'players');
-    const playersUnsub = onSnapshot(playersCol, (snap) => {
-      const opps: Record<string, Opponent> = {};
-      snap.forEach(d => {
-        if (d.id !== user.uid) {
-          opps[d.id] = { id: d.id, ...d.data() } as Opponent;
-        }
-      });
-      setOpponents(opps);
-    });
-
-    return () => {
-      playersUnsub();
-    }
-  }, [gameState, lobbyCode, user, getFirebase, config.appId]);
 
 
   const startRaceByHost = async () => {
@@ -295,6 +289,30 @@ export default function VelocityLobbyClient() {
     setOpponents({});
     setIsHost(false);
   };
+  
+  const resetDatabase = async () => {
+    const lobbiesColRef = getLobbiesCollectionRef();
+    if (!lobbiesColRef) {
+      toast({ variant: 'destructive', title: "Veritabanı sıfırlanamadı." });
+      return;
+    }
+    try {
+      const batch = writeBatch(dbRef.current!);
+      // This is a simplified approach. A real-world scenario would need a Cloud Function
+      // to recursively delete subcollections. Firestore security rules prevent client-side
+      // collection deletion. We'll just delete the lobby doc itself.
+      const lobbyDocRef = getLobbyDocRef(lobbyCode);
+      if (lobbyDocRef) {
+        batch.delete(lobbyDocRef);
+      }
+      await batch.commit();
+      toast({ title: "Veritabanı Sıfırlandı", description: "Tüm lobi verileri silindi." });
+      quitRace();
+    } catch (error) {
+      console.error("Error resetting database:", error);
+      toast({ variant: 'destructive', title: "Sıfırlama Hatası", description: "Veritabanı temizlenirken bir hata oluştu." });
+    }
+  };
 
   const syncMultiplayer = useCallback((phys: any, currentLapInfo: any) => {
     if (!user || !lobbyCode) return;
@@ -306,7 +324,7 @@ export default function VelocityLobbyClient() {
       lap: currentLapInfo.current,
       lastSeen: serverTimestamp()
     }).catch(e => console.warn("Sync error:", e));
-  }, [user, lobbyCode, getPlayerDocRef, getFirebase, config.appId]);
+  }, [user, lobbyCode, getPlayerDocRef]);
 
 
   // --- Render ---
@@ -320,7 +338,7 @@ export default function VelocityLobbyClient() {
   }
 
   if (gameState === 'menu') {
-    return <MenuScreen {...{ playerCar, setPlayerCar, aiLoading, generateTeamName, inputLobbyCode, setInputLobbyCode, joinLobby, createLobby, connectionStatus }} />;
+    return <MenuScreen {...{ playerCar, setPlayerCar, aiLoading, generateTeamName, inputLobbyCode, setInputLobbyCode, joinLobby, createLobby, connectionStatus, resetDatabase }} />;
   }
   if (gameState === 'lobby') {
     return <LobbyScreen {...{ lobbyCode, lobbyPlayers, isHost, startRaceByHost, quitRace, userId: user?.uid ?? null }} />;

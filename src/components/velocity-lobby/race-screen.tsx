@@ -268,8 +268,15 @@ export function RaceScreen({
             if (distance < 80) { // Collision threshold
                 p.speed *= 0.85;
                 (bot as any).speed *= 0.9;
-                p.x -= dx * 0.1;
-                p.y -= dy * 0.1;
+                
+                const overlap = 80 - distance;
+                const pushX = (dx / distance) * overlap * 0.5;
+                const pushY = (dy / distance) * overlap * 0.5;
+                p.x += pushX;
+                p.y += pushY;
+                bot.x -= pushX;
+                bot.y -= pushY;
+                
                 p.collision = true;
                 createSparks(p.x - dx/2, p.y - dy/2, 15);
             }
@@ -285,10 +292,10 @@ export function RaceScreen({
                 p.speed *= 0.85; // Player loses some speed
                 p.collision = true;
                 
-                // Apply a small bounce effect
+                // Apply a stronger bounce effect to prevent getting stuck
                 const overlap = 80 - distance;
-                const pushX = (dx / distance) * overlap * 0.2;
-                const pushY = (dy / distance) * overlap * 0.2;
+                const pushX = (dx / distance) * overlap * 0.5; // Push them apart based on overlap
+                const pushY = (dy / distance) * overlap * 0.5;
                 p.x += pushX;
                 p.y += pushY;
                 
