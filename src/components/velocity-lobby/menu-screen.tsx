@@ -1,6 +1,6 @@
 'use client';
 
-import { Check, Loader2, LogIn, PlusCircle, Settings, Users, Gamepad2, Trash2 } from "lucide-react";
+import { Check, Loader2, LogIn, PlusCircle, Settings, Users, Gamepad2, Trash2, ShieldCheck } from "lucide-react";
 import { TEAMS } from "@/lib/constants";
 import type { PlayerCar, Team } from "@/types";
 import { Button } from "@/components/ui/button";
@@ -19,6 +19,8 @@ type MenuScreenProps = {
   createLobby: () => void;
   connectionStatus: string;
   resetDatabase: () => void;
+  isAdmin: boolean;
+  handleAdminLogin: () => void;
 };
 
 const Controls = () => (
@@ -41,7 +43,7 @@ const Controls = () => (
     </Card>
 );
 
-export function MenuScreen({ playerCar, setPlayerCar, aiLoading, generateTeamName, inputLobbyCode, setInputLobbyCode, joinLobby, createLobby, connectionStatus, resetDatabase }: MenuScreenProps) {
+export function MenuScreen({ playerCar, setPlayerCar, aiLoading, generateTeamName, inputLobbyCode, setInputLobbyCode, joinLobby, createLobby, connectionStatus, resetDatabase, isAdmin, handleAdminLogin }: MenuScreenProps) {
 
   const selectTeam = (team: Team) => {
     setPlayerCar({ ...playerCar, color: team.color, team: team.name, teamId: team.id });
@@ -112,26 +114,34 @@ export function MenuScreen({ playerCar, setPlayerCar, aiLoading, generateTeamNam
                 {connectionStatus === 'connected' ? 'SUNUCUYA BAĞLI' : connectionStatus === 'error' ? 'BAĞLANTI HATASI' : 'BAĞLANIYOR...'}
               </span>
             </div>
-            <AlertDialog>
-              <AlertDialogTrigger asChild>
-                <Button variant="destructive" size="sm" className="text-xs">
-                  <Trash2 className="mr-2 h-3 w-3" />
-                  Veritabanını Sıfırla
-                </Button>
-              </AlertDialogTrigger>
-              <AlertDialogContent>
-                <AlertDialogHeader>
-                  <AlertDialogTitle>Emin misiniz?</AlertDialogTitle>
-                  <AlertDialogDescription>
-                    Bu işlem tüm lobi verilerini kalıcı olarak silecektir. Bu eylem geri alınamaz.
-                  </AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter>
-                  <AlertDialogCancel>İptal</AlertDialogCancel>
-                  <AlertDialogAction onClick={resetDatabase}>Onayla ve Sil</AlertDialogAction>
-                </AlertDialogFooter>
-              </AlertDialogContent>
-            </AlertDialog>
+            <div className="flex items-center gap-2">
+              <Button onClick={handleAdminLogin} variant="outline" size="sm" className="text-xs">
+                <ShieldCheck className="mr-2 h-3 w-3" />
+                {isAdmin ? 'Admin' : 'Admin Girişi'}
+              </Button>
+              {isAdmin && (
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <Button variant="destructive" size="sm" className="text-xs">
+                      <Trash2 className="mr-2 h-3 w-3" />
+                      Veritabanını Sıfırla
+                    </Button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>Emin misiniz?</AlertDialogTitle>
+                      <AlertDialogDescription>
+                        Bu işlem tüm lobi verilerini kalıcı olarak silecektir. Bu eylem geri alınamaz.
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>İptal</AlertDialogCancel>
+                      <AlertDialogAction onClick={resetDatabase}>Onayla ve Sil</AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
+              )}
+            </div>
           </div>
         </div>
       </div>

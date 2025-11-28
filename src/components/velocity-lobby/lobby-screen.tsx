@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from "react";
-import { Check, Copy, User, Users } from "lucide-react";
+import { Check, Copy, User, Users, X } from "lucide-react";
 import type { Player } from "@/types";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
@@ -10,12 +10,14 @@ type LobbyScreenProps = {
   lobbyCode: string;
   lobbyPlayers: Player[];
   isHost: boolean;
+  isAdmin: boolean;
+  kickPlayer: (playerId: string) => void;
   startRaceByHost: () => void;
   quitRace: () => void;
   userId: string | null;
 };
 
-export function LobbyScreen({ lobbyCode, lobbyPlayers, isHost, startRaceByHost, quitRace, userId }: LobbyScreenProps) {
+export function LobbyScreen({ lobbyCode, lobbyPlayers, isHost, isAdmin, kickPlayer, startRaceByHost, quitRace, userId }: LobbyScreenProps) {
   const [copied, setCopied] = useState(false);
   const { toast } = useToast();
 
@@ -45,10 +47,20 @@ export function LobbyScreen({ lobbyCode, lobbyPlayers, isHost, startRaceByHost, 
 
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 mb-8">
           {lobbyPlayers.map(p => (
-            <div key={p.id} className="bg-muted p-3 rounded-lg flex items-center gap-3 border">
+            <div key={p.id} className="bg-muted p-3 rounded-lg flex items-center gap-3 border relative group">
               <div className="w-8 h-8 rounded-full border-2" style={{ backgroundColor: p.color, borderColor: p.ready ? '#4ade80' : '#94a3b8' }}></div>
               <span className="font-bold truncate">{p.name}</span>
               {p.id === userId && <span className="text-xs bg-accent text-accent-foreground px-2 py-0.5 rounded-full ml-auto font-bold">SEN</span>}
+               {isAdmin && p.id !== userId && (
+                 <Button
+                   size="icon"
+                   variant="destructive"
+                   className="absolute -right-2 -top-2 h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
+                   onClick={() => kickPlayer(p.id)}
+                 >
+                   <X size={14} />
+                 </Button>
+               )}
             </div>
           ))}
           {[...Array(Math.max(0, 8 - lobbyPlayers.length))].map((_, i) => (

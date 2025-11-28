@@ -1,11 +1,11 @@
-
 // @/components/velocity-lobby/race-screen.tsx
 'use client';
 
 import { useEffect, useRef, useState, useCallback } from 'react';
 import type { PlayerCar, Player, Opponent } from '@/types';
 import { ACCELERATION, BASE_ROAD_Y, FRICTION_ROAD, LANE_SPEED, MAX_SPEED_DRS, MAX_SPEED_NORMAL, ROAD_WIDTH, TRACK_LENGTH, WALL_BOUNCE } from '@/lib/constants';
-import { Loader2, LogOut, Plus, Radio, Zap, ShieldAlert } from 'lucide-react';
+import { Loader2, LogOut, Plus, Radio, Zap, ShieldAlert, X } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 
 type RaceScreenProps = {
   playerCar: PlayerCar;
@@ -18,6 +18,8 @@ type RaceScreenProps = {
   radioMessage: string | null;
   radioLoading: boolean;
   quitRace: () => void;
+  isAdmin: boolean;
+  kickPlayer: (playerId: string) => void;
 };
 
 export function RaceScreen({
@@ -30,7 +32,9 @@ export function RaceScreen({
   triggerRaceEngineer,
   radioMessage,
   radioLoading,
-  quitRace
+  quitRace,
+  isAdmin,
+  kickPlayer
 }: RaceScreenProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const requestRef = useRef<number>();
@@ -230,10 +234,10 @@ export function RaceScreen({
         if (i.drs && prev.charge > 0) {
             currentDrsActive = true;
             newDrsCharge = Math.max(0, prev.charge - 0.5);
-            return { active: true, charge: newDrsCharge };
+        } else {
+             newDrsCharge = Math.min(100, prev.charge + 0.1);
         }
-        newDrsCharge = Math.min(100, prev.charge + 0.1);
-        return { active: false, charge: newDrsCharge };
+        return { active: i.drs && prev.charge > 0, charge: newDrsCharge };
     });
 
     const currentMaxSpeed = currentDrsActive ? MAX_SPEED_DRS : MAX_SPEED_NORMAL;
@@ -257,7 +261,7 @@ export function RaceScreen({
       createSparks(p.x - 60, p.y + (sparkSide * 15), 10);
     }
     
-    // Ghosting for the first 100 meters (1000 units of x)
+    // Ghosting for the first 1000 units (approx. 100 meters)
     if (p.x > 1000) {
         // Collision with bots
         botsRef.current.forEach(bot => {
@@ -270,8 +274,8 @@ export function RaceScreen({
                 (bot as any).speed *= 0.9;
                 
                 const overlap = 80 - distance;
-                const pushX = (dx / distance) * overlap * 0.5;
-                const pushY = (dy / distance) * overlap * 0.5;
+                const pushX = (dx / distance) * overlap * 0.8;
+                const pushY = (dy / distance) * overlap * 0.8;
                 p.x += pushX;
                 p.y += pushY;
                 bot.x -= pushX;
@@ -294,8 +298,8 @@ export function RaceScreen({
                 
                 // Apply a stronger bounce effect to prevent getting stuck
                 const overlap = 80 - distance;
-                const pushX = (dx / distance) * overlap * 0.5; // Push them apart based on overlap
-                const pushY = (dy / distance) * overlap * 0.5;
+                const pushX = (dx / distance) * overlap * 0.8; 
+                const pushY = (dy / distance) * overlap * 0.8;
                 p.x += pushX;
                 p.y += pushY;
                 
@@ -368,7 +372,7 @@ export function RaceScreen({
         setLeaderboardData(allRacers as Player[]);
     }
     
-    if (Date.now() - lastSync.current > 2000) {
+    if (Date.now() - lastSync.current > 500) {
         syncMultiplayer(phys.current, lapInfoRef.current);
         lastSync.current = Date.now();
     }
@@ -467,9 +471,21 @@ export function RaceScreen({
                  {leaderboardData.slice(0, 6).map((d, i) => {
                      const leaderX = leaderboardData[0]?.x || 0;
                      return (
-                        <div key={d.id || i} className={`flex justify-between items-center p-1 rounded ${d.isMe ? 'bg-accent/20 text-accent font-bold border-l-2 border-accent' : 'text-foreground'}`}>
+                        <div key={d.id || i} className={`flex justify-between items-center p-1 rounded group ${d.isMe ? 'bg-accent/20 text-accent font-bold border-l-2 border-accent' : 'text-foreground'}`}>
                             <div className="flex items-center gap-2"><span className="text-muted-foreground w-4">{i + 1}</span><span className="truncate w-24">{d.name}</span></div>
-                            <span className={i === 0 ? 'text-green-400' : 'text-red-400'}>{i === 0 ? 'LİDER' : `+${Math.floor((leaderX - (d.x || 0)) / 10)}m`}</span>
+                            <div className="flex items-center gap-2">
+                              <span className={i === 0 ? 'text-green-400' : 'text-red-400'}>{i === 0 ? 'LİDER' : `+${Math.floor((leaderX - (d.x || 0)) / 10)}m`}</span>
+                              {isAdmin && !d.isMe && (
+                                <Button
+                                  size="icon"
+                                  variant="destructive"
+                                  className="h-5 w-5 opacity-0 group-hover:opacity-100 transition-opacity"
+                                  onClick={() => d.id && kickPlayer(d.id)}
+                                >
+                                  <X size={12} />
+                                </Button>
+                              )}
+                            </div>
                         </div>
                     )
                  })}

@@ -4,7 +4,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { initializeApp, type FirebaseApp } from 'firebase/app';
 import { getAuth, signInAnonymously, onAuthStateChanged, User, signInWithCustomToken, Auth } from 'firebase/auth';
-import { getFirestore, collection, doc, setDoc, onSnapshot, serverTimestamp, updateDoc, getDoc, Firestore, writeBatch, getDocs, query } from 'firebase/firestore';
+import { getFirestore, collection, doc, setDoc, onSnapshot, serverTimestamp, updateDoc, getDoc, Firestore, writeBatch, getDocs, query, deleteDoc } from 'firebase/firestore';
 
 import { MenuScreen } from './menu-screen';
 import { LobbyScreen } from './lobby-screen';
@@ -39,6 +39,7 @@ export default function VelocityLobbyClient() {
   const [lobbyCode, setLobbyCode] = useState("");
   const [inputLobbyCode, setInputLobbyCode] = useState("");
   const [isHost, setIsHost] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
   const [lobbyPlayers, setLobbyPlayers] = useState<Player[]>([]);
   const [targetLaps, setTargetLaps] = useState(3);
 
@@ -67,6 +68,37 @@ export default function VelocityLobbyClient() {
     return { app: null, auth: null, db: null };
   }, [config.config]);
 
+  const startRaceSequence = useCallback((laps: number) => {
+    setLapInfo({ current: 1, total: laps, finished: false });
+    setGameState('race');
+  }, []);
+  
+  const getLobbyDocRef = useCallback((code: string) => {
+    const { db } = getFirebase();
+    if (!db || !config.appId) return null;
+    return doc(db, 'artifacts', config.appId, 'public', 'data', 'lobbies', code);
+  }, [config.appId, getFirebase]);
+  
+  const getLobbiesCollectionRef = useCallback(() => {
+    const { db } = getFirebase();
+    if (!db || !config.appId) return null;
+    return collection(db, 'artifacts', config.appId, 'public', 'data', 'lobbies');
+  }, [config.appId, getFirebase]);
+
+  const getPlayerDocRef = useCallback((lobbyCode: string, playerId: string) => {
+     const { db } = getFirebase();
+     if (!db || !config.appId) return null;
+     return doc(db, 'artifacts', config.appId, 'public', 'data', 'lobbies', lobbyCode, 'players', playerId);
+  }, [config.appId, getFirebase]);
+
+  const quitRace = useCallback(() => {
+    setGameState('menu');
+    setLobbyCode("");
+    setInputLobbyCode("");
+    setLobbyPlayers([]);
+    setOpponents({});
+    setIsHost(false);
+  }, []);
 
   // --- Initialization ---
   useEffect(() => {
@@ -118,6 +150,64 @@ export default function VelocityLobbyClient() {
     return () => unsub();
   }, [config, toast, getFirebase]);
 
+  // Centralized listener for lobby and race data
+  useEffect(() => {
+    if (!lobbyCode || !user) return;
+    
+    const { db } = getFirebase();
+    if (!db || !config.appId) return;
+
+    const lobbyDocRef = getLobbyDocRef(lobbyCode);
+    if (!lobbyDocRef) return;
+
+    const lobbyUnsub = onSnapshot(lobbyDocRef, (doc) => {
+      if (!doc.exists()) {
+        toast({ title: "Lobi Kapatıldı", description: "Kurucu tarafından lobi kapatıldı veya zaman aşımına uğradı." });
+        quitRace();
+        return;
+      }
+      if (doc.exists() && gameState === 'lobby') {
+        const data = doc.data();
+        if (data.status === 'started') {
+          startRaceSequence(data.laps || 3);
+        }
+      }
+    });
+
+    const playersCol = collection(db, 'artifacts', config.appId, 'public', 'data', 'lobbies', lobbyCode, 'players');
+    const playersUnsub = onSnapshot(playersCol, (snap) => {
+      const players: Player[] = [];
+      const opps: Record<string, Opponent> = {};
+      let playerExists = false;
+      snap.forEach(d => {
+        const playerData = { id: d.id, ...d.data() } as Player;
+        players.push(playerData);
+        if (d.id === user.uid) {
+            playerExists = true;
+        }
+        if (d.id !== user.uid) {
+          opps[d.id] = playerData as Opponent;
+        }
+      });
+      
+      if (!playerExists && gameState !== 'menu') {
+        toast({ variant: 'destructive', title: "Atıldın!", description: "Lobiden atıldın."});
+        quitRace();
+        return;
+      }
+
+      setLobbyPlayers(players);
+      if (gameState === 'race') {
+        setOpponents(opps);
+      }
+    });
+
+    return () => {
+      lobbyUnsub();
+      playersUnsub();
+    };
+  }, [gameState, lobbyCode, user, getFirebase, config.appId, getLobbyDocRef, startRaceSequence, toast, quitRace]);
+
   // --- AI Actions ---
   const generateTeamName = async () => {
     if (!playerCar.name || aiLoading) return;
@@ -145,25 +235,6 @@ export default function VelocityLobbyClient() {
     setRadioLoading(false);
     setTimeout(() => setRadioMessage(null), 7000);
   };
-
-  const getLobbyDocRef = useCallback((code: string) => {
-    const { db } = getFirebase();
-    if (!db || !config.appId) return null;
-    return doc(db, 'artifacts', config.appId, 'public', 'data', 'lobbies', code);
-  }, [config.appId, getFirebase]);
-  
-  const getLobbiesCollectionRef = useCallback(() => {
-    const { db } = getFirebase();
-    if (!db || !config.appId) return null;
-    return collection(db, 'artifacts', config.appId, 'public', 'data', 'lobbies');
-  }, [config.appId, getFirebase]);
-
-
-  const getPlayerDocRef = useCallback((lobbyCode: string, playerId: string) => {
-     const { db } = getFirebase();
-     if (!db || !config.appId) return null;
-     return doc(db, 'artifacts', config.appId, 'public', 'data', 'lobbies', lobbyCode, 'players', playerId);
-  }, [config.appId, getFirebase]);
 
 
   // --- Lobby Actions ---
@@ -224,56 +295,6 @@ export default function VelocityLobbyClient() {
       setGameState('lobby');
   };
 
-  const startRaceSequence = useCallback((laps: number) => {
-    setLapInfo({ current: 1, total: laps, finished: false });
-    setGameState('race');
-  }, []);
-
-  // Centralized listener for lobby and race data
-  useEffect(() => {
-    if (!lobbyCode || !user) return;
-    
-    const { db } = getFirebase();
-    if (!db || !config.appId) return;
-
-    const lobbyDocRef = getLobbyDocRef(lobbyCode);
-    if (!lobbyDocRef) return;
-
-    const lobbyUnsub = onSnapshot(lobbyDocRef, (doc) => {
-      if (doc.exists() && gameState === 'lobby') {
-        const data = doc.data();
-        if (data.status === 'started') {
-          startRaceSequence(data.laps || 3);
-        }
-      }
-    });
-
-    const playersCol = collection(db, 'artifacts', config.appId, 'public', 'data', 'lobbies', lobbyCode, 'players');
-    const playersUnsub = onSnapshot(playersCol, (snap) => {
-      const players: Player[] = [];
-      const opps: Record<string, Opponent> = {};
-      snap.forEach(d => {
-        const playerData = { id: d.id, ...d.data() } as Player;
-        players.push(playerData);
-        if (d.id !== user.uid) {
-          opps[d.id] = playerData as Opponent;
-        }
-      });
-
-      if (gameState === 'lobby') {
-        setLobbyPlayers(players);
-      } else if (gameState === 'race') {
-        setOpponents(opps);
-      }
-    });
-
-    return () => {
-      lobbyUnsub();
-      playersUnsub();
-    };
-  }, [gameState, lobbyCode, user, getFirebase, config.appId, getLobbyDocRef, startRaceSequence]);
-
-
   const startRaceByHost = async () => {
     if (!isHost || !lobbyCode) return;
     const lobbyDocRef = getLobbyDocRef(lobbyCode);
@@ -281,16 +302,34 @@ export default function VelocityLobbyClient() {
     await updateDoc(lobbyDocRef, { status: 'started' });
   };
   
-  const quitRace = () => {
-    setGameState('menu');
-    setLobbyCode("");
-    setInputLobbyCode("");
-    setLobbyPlayers([]);
-    setOpponents({});
-    setIsHost(false);
+  const handleAdminLogin = () => {
+    if (isAdmin) {
+      toast({ title: "Admin çıkışı yapıldı."});
+      setIsAdmin(false);
+      return;
+    }
+    const pass = prompt("Admin şifresini girin:");
+    if (pass === "123gorkem") {
+      setIsAdmin(true);
+      toast({ title: "Admin girişi başarılı!", description: "Özel yetkiler aktif."});
+    } else if (pass) {
+      toast({ variant: 'destructive', title: "Şifre yanlış!", description: "Admin girişi başarısız."});
+    }
   };
-  
+
+  const kickPlayer = async (playerId: string) => {
+    if (!isAdmin || !lobbyCode) return;
+    const playerRef = getPlayerDocRef(lobbyCode, playerId);
+    if (!playerRef) return;
+    await deleteDoc(playerRef);
+    toast({ title: "Oyuncu Atıldı", description: `Oyuncu ${playerId} lobiden atıldı.`})
+  };
+
   const resetDatabase = async () => {
+    if (!isAdmin) {
+        toast({ variant: 'destructive', title: "Yetki Gerekli", description: "Bu işlem için admin olmalısınız."});
+        return;
+    }
     const { db } = getFirebase();
     if (!db) {
         toast({ variant: 'destructive', title: "Veritabanı sıfırlanamadı." });
@@ -312,16 +351,19 @@ export default function VelocityLobbyClient() {
             toast({ title: "Veritabanı zaten boş.", description: "Silinecek lobi bulunamadı." });
             return;
         }
-
-        querySnapshot.forEach((doc) => {
-            // NOTE: This does not delete subcollections (players).
-            // For a full wipe, a Cloud Function is needed. This is a best-effort client-side wipe.
-            batch.delete(doc.ref);
-        });
+        
+        for (const lobbyDoc of querySnapshot.docs) {
+            const playersColRef = collection(db, lobbyDoc.ref.path, 'players');
+            const playersSnapshot = await getDocs(playersColRef);
+            playersSnapshot.forEach(playerDoc => {
+                batch.delete(playerDoc.ref);
+            });
+            batch.delete(lobbyDoc.ref);
+        }
 
         await batch.commit();
         
-        toast({ title: "Veritabanı Sıfırlandı", description: `${querySnapshot.size} lobi başarıyla silindi.` });
+        toast({ title: "Veritabanı Sıfırlandı", description: `${querySnapshot.size} lobi ve tüm oyuncular başarıyla silindi.` });
         quitRace();
 
     } catch (error) {
@@ -354,13 +396,13 @@ export default function VelocityLobbyClient() {
   }
 
   if (gameState === 'menu') {
-    return <MenuScreen {...{ playerCar, setPlayerCar, aiLoading, generateTeamName, inputLobbyCode, setInputLobbyCode, joinLobby, createLobby, connectionStatus, resetDatabase }} />;
+    return <MenuScreen {...{ playerCar, setPlayerCar, aiLoading, generateTeamName, inputLobbyCode, setInputLobbyCode, joinLobby, createLobby, connectionStatus, resetDatabase, isAdmin, handleAdminLogin }} />;
   }
   if (gameState === 'lobby') {
-    return <LobbyScreen {...{ lobbyCode, lobbyPlayers, isHost, startRaceByHost, quitRace, userId: user?.uid ?? null }} />;
+    return <LobbyScreen {...{ lobbyCode, lobbyPlayers, isHost, startRaceByHost, quitRace, userId: user?.uid ?? null, isAdmin, kickPlayer }} />;
   }
   if (gameState === 'race') {
-    return <RaceScreen {...{ playerCar, opponents, setGameState, lapInfo, setLapInfo, syncMultiplayer, triggerRaceEngineer, radioMessage, radioLoading, quitRace }} />;
+    return <RaceScreen {...{ playerCar, opponents, setGameState, lapInfo, setLapInfo, syncMultiplayer, triggerRaceEngineer, radioMessage, radioLoading, quitRace, isAdmin, kickPlayer }} />;
   }
   if (gameState === 'finished') {
     return <FinishedScreen playerCar={playerCar} setGameState={setGameState} />;
