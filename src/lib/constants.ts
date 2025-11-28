@@ -9,8 +9,13 @@ export const WALL_BOUNCE = 0.6;
 export const LANE_SPEED = 5;
 export const TRACK_LENGTH = 15000; 
 
-export const ROAD_WIDTH = 500; 
+export const ROAD_WIDTH = 600; 
 export const BASE_ROAD_Y = 400;
+
+// --- STEERING ---
+export const STEERING_SENSITIVITY = 0.5; // Max wheel angle
+export const STEERING_ASSIST_STRENGTH = 0.02; // How strongly the car autocorrects to the road direction
+
 
 // --- TEAMS ---
 export const TEAMS: Team[] = [

@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
@@ -34,6 +33,7 @@ export default function VelocityLobbyClient() {
     teamId: TEAMS[0].id
   });
   const [aiLoading, setAiLoading] = useState(false);
+  const [assistEnabled, setAssistEnabled] = useState(false);
 
   // Lobby State
   const [lobbyCode, setLobbyCode] = useState("");
@@ -436,13 +436,13 @@ export default function VelocityLobbyClient() {
   }
 
   if (gameState === 'menu') {
-    return <MenuScreen {...{ playerCar, setPlayerCar, aiLoading, generateTeamName, inputLobbyCode, setInputLobbyCode, joinLobby, createLobby, connectionStatus, resetDatabase, isAdmin, handleAdminLogin, publicLobbies, refreshLobbies, lobbiesLoading }} />;
+    return <MenuScreen {...{ playerCar, setPlayerCar, aiLoading, generateTeamName, inputLobbyCode, setInputLobbyCode, joinLobby, createLobby, connectionStatus, resetDatabase, isAdmin, handleAdminLogin, publicLobbies, refreshLobbies, lobbiesLoading, assistEnabled, setAssistEnabled }} />;
   }
   if (gameState === 'lobby') {
     return <LobbyScreen {...{ lobbyCode, lobbyPlayers, isHost, startRaceByHost, quitRace, userId: user?.uid ?? null, isAdmin, kickPlayer }} />;
   }
   if (gameState === 'race') {
-    return <RaceScreen {...{ playerCar, opponents, setGameState, lapInfo, setLapInfo, syncMultiplayer, triggerRaceEngineer, radioMessage, radioLoading, quitRace, isAdmin, kickPlayer }} />;
+    return <RaceScreen {...{ playerCar, opponents, setGameState, lapInfo, setLapInfo, syncMultiplayer, triggerRaceEngineer, radioMessage, radioLoading, quitRace, isAdmin, kickPlayer, assistEnabled }} />;
   }
   if (gameState === 'finished') {
     return <FinishedScreen playerCar={playerCar} setGameState={setGameState} />;

@@ -1,6 +1,6 @@
 'use client';
 
-import { Check, Loader2, LogIn, PlusCircle, Settings, Users, Gamepad2, Trash2, ShieldCheck, RefreshCw } from "lucide-react";
+import { Check, Loader2, LogIn, PlusCircle, Settings, Users, Gamepad2, Trash2, ShieldCheck, RefreshCw, Shield } from "lucide-react";
 import { TEAMS } from "@/lib/constants";
 import type { PlayerCar, Team, Lobby } from "@/types";
 import { Button } from "@/components/ui/button";
@@ -8,10 +8,12 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Label } from "../ui/label";
+import { Switch } from "../ui/switch";
 
 type MenuScreenProps = {
   playerCar: PlayerCar;
-  setPlayerCar: (car: PlayerCar) => void;
+  setPlayerCar: (updater: (car: PlayerCar) => PlayerCar) => void;
   aiLoading: boolean;
   generateTeamName: () => void;
   inputLobbyCode: string;
@@ -25,6 +27,8 @@ type MenuScreenProps = {
   publicLobbies: Lobby[];
   refreshLobbies: () => void;
   lobbiesLoading: boolean;
+  assistEnabled: boolean;
+  setAssistEnabled: (enabled: boolean) => void;
 };
 
 const Controls = () => (
@@ -47,10 +51,10 @@ const Controls = () => (
     </Card>
 );
 
-export function MenuScreen({ playerCar, setPlayerCar, aiLoading, generateTeamName, inputLobbyCode, setInputLobbyCode, joinLobby, createLobby, connectionStatus, resetDatabase, isAdmin, handleAdminLogin, publicLobbies, refreshLobbies, lobbiesLoading }: MenuScreenProps) {
+export function MenuScreen({ playerCar, setPlayerCar, aiLoading, generateTeamName, inputLobbyCode, setInputLobbyCode, joinLobby, createLobby, connectionStatus, resetDatabase, isAdmin, handleAdminLogin, publicLobbies, refreshLobbies, lobbiesLoading, assistEnabled, setAssistEnabled }: MenuScreenProps) {
 
   const selectTeam = (team: Team) => {
-    setPlayerCar({ ...playerCar, color: team.color, team: team.name, teamId: team.id });
+    setPlayerCar(car => ({ ...car, color: team.color, team: team.name, teamId: team.id }));
   };
 
   const connectionColor = connectionStatus === 'connected' ? 'text-green-400' : connectionStatus === 'error' ? 'text-red-500' : 'text-yellow-400';
@@ -65,7 +69,7 @@ export function MenuScreen({ playerCar, setPlayerCar, aiLoading, generateTeamNam
           <div className="space-y-6">
             <div>
               <label className="text-xs font-bold text-muted-foreground uppercase">Pilot Adı</label>
-              <Input value={playerCar.name} onChange={e => setPlayerCar({ ...playerCar, name: e.target.value })} className="mt-1 text-lg font-bold" />
+              <Input value={playerCar.name} onChange={e => setPlayerCar(car => ({ ...car, name: e.target.value }))} className="mt-1 text-lg font-bold" />
             </div>
 
             <div>
@@ -79,6 +83,13 @@ export function MenuScreen({ playerCar, setPlayerCar, aiLoading, generateTeamNam
                   </button>
                 ))}
               </div>
+            </div>
+             <div className="flex items-center justify-between rounded-lg border p-3 shadow-sm bg-muted/20">
+                <div className="space-y-0.5">
+                    <Label htmlFor="assist-mode" className="text-base font-bold flex items-center gap-2"><Shield size={16}/> Sürüş Asistanı</Label>
+                    <p className="text-xs text-muted-foreground">Pistte kalmanıza yardımcı olur, kapatarak daha gerçekçi bir deneyim yaşayın.</p>
+                </div>
+                <Switch id="assist-mode" checked={assistEnabled} onCheckedChange={setAssistEnabled} />
             </div>
           </div>
         </div>
@@ -182,3 +193,5 @@ export function MenuScreen({ playerCar, setPlayerCar, aiLoading, generateTeamNam
     </div>
   );
 }
+
+    

@@ -1,9 +1,8 @@
-// @/components/velocity-lobby/race-screen.tsx
 'use client';
 
 import { useEffect, useRef, useState, useCallback } from 'react';
 import type { PlayerCar, Player, Opponent } from '@/types';
-import { ACCELERATION, BASE_ROAD_Y, FRICTION_ROAD, LANE_SPEED, MAX_SPEED_DRS, MAX_SPEED_NORMAL, ROAD_WIDTH, TRACK_LENGTH, WALL_BOUNCE } from '@/lib/constants';
+import { ACCELERATION, BASE_ROAD_Y, FRICTION_ROAD, LANE_SPEED, MAX_SPEED_DRS, MAX_SPEED_NORMAL, ROAD_WIDTH, TRACK_LENGTH, WALL_BOUNCE, STEERING_ASSIST_STRENGTH, STEERING_SENSITIVITY } from '@/lib/constants';
 import { Loader2, LogOut, Plus, Radio, Zap, ShieldAlert, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
@@ -20,6 +19,7 @@ type RaceScreenProps = {
   quitRace: () => void;
   isAdmin: boolean;
   kickPlayer: (playerId: string) => void;
+  assistEnabled: boolean;
 };
 
 export function RaceScreen({
@@ -34,12 +34,13 @@ export function RaceScreen({
   radioLoading,
   quitRace,
   isAdmin,
-  kickPlayer
+  kickPlayer,
+  assistEnabled
 }: RaceScreenProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const requestRef = useRef<number>();
   const gameActive = useRef(true);
-  const phys = useRef({ x: 0, y: BASE_ROAD_Y, speed: 0, collision: false, wheelAngle: 0 });
+  const phys = useRef({ x: 0, y: BASE_ROAD_Y, speed: 0, collision: false, wheelAngle: 0, angle: 0 });
   const inputs = useRef({ gas: false, brake: false, left: false, right: false, drs: false });
   const botsRef = useRef<Player[]>([]);
   const lastSync = useRef(0);
@@ -60,23 +61,25 @@ export function RaceScreen({
     return BASE_ROAD_Y + Math.sin(val * 0.0008) * 250 + Math.cos(val * 0.002) * 50;
   }, []);
 
-  const drawCar = useCallback((ctx: CanvasRenderingContext2D, x: number, y: number, color: string, name: string, isDrsOpen: boolean, isBraking: boolean, wheelAngle: number) => {
+  const drawCar = useCallback((ctx: CanvasRenderingContext2D, carX: number, carY: number, color: string, name: string, isDrsOpen: boolean, isBraking: boolean, wheelAngle: number, bodyAngle: number) => {
     ctx.save();
-    ctx.translate(x, y);
-    const slope = (getRoadCurve(phys.current.x + 20) - getRoadCurve(phys.current.x)) / 20;
-    ctx.rotate(slope * 0.8);
+    ctx.translate(carX, carY);
+    ctx.rotate(bodyAngle);
 
+    // Car Body
     ctx.fillStyle = color;
     ctx.beginPath();
     ctx.moveTo(50, 0); ctx.lineTo(10, -12); ctx.lineTo(-30, -15); ctx.lineTo(-60, -12);
     ctx.lineTo(-60, 12); ctx.lineTo(-30, 15); ctx.lineTo(10, 12);
     ctx.fill();
 
+    // Cockpit
     ctx.fillStyle = '#111';
     ctx.beginPath(); ctx.ellipse(-10, 0, 15, 8, 0, 0, Math.PI * 2); ctx.fill();
     ctx.fillStyle = '#fbbf24';
     ctx.beginPath(); ctx.arc(-10, 0, 5, 0, Math.PI * 2); ctx.fill();
 
+    // DRS
     ctx.fillStyle = isDrsOpen ? '#22c55e' : '#1e293b';
     ctx.save();
     ctx.translate(-65, -25);
@@ -84,44 +87,49 @@ export function RaceScreen({
     ctx.fillRect(0, 0, 25, 6);
     ctx.restore();
 
+    // Front Wing
     ctx.fillStyle = '#1e293b'; ctx.fillRect(45, 5, 10, 4);
     ctx.fillStyle = '#0f172a';
 
     // Wheels
-    const drawWheel = (wx: number, wy: number, width: number, height: number) => {
+    const drawWheel = (wx: number, wy: number, width: number, height: number, isFront: boolean) => {
+        ctx.save();
+        ctx.translate(wx, wy);
+        if(isFront) ctx.rotate(wheelAngle);
+        
+        ctx.fillStyle = '#0f172a';
         ctx.beginPath();
-        ctx.roundRect(wx, wy, width, height, 3);
+        ctx.roundRect(-width/2, -height/2, width, height, 3);
         ctx.fill();
+
         ctx.strokeStyle = '#4a4a4a';
         ctx.lineWidth = 1;
-        const spokeAngle = wheelAngle;
-        const centerX = wx + width / 2;
-        const centerY = wy + height / 2;
-        ctx.beginPath();
-        ctx.moveTo(centerX, centerY - height/2);
-        ctx.lineTo(centerX, centerY + height/2);
-        ctx.stroke();
-        ctx.beginPath();
-        ctx.moveTo(centerX - width/2, centerY);
-        ctx.lineTo(centerX + width/2, centerY);
-        ctx.stroke();
+        const spokeRotation = phys.current.wheelAngle; // Use global wheel angle for rotation illusion
+        ctx.rotate(spokeRotation);
+        
+        ctx.beginPath(); ctx.moveTo(0, -height/2); ctx.lineTo(0, height/2); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(-width/2, 0); ctx.lineTo(width/2, 0); ctx.stroke();
+
+        ctx.restore();
     };
     
-    drawWheel(20, -22, 16, 8); // Front-Top
-    drawWheel(20, 14, 16, 8); // Front-Bottom
-    drawWheel(-50, -24, 20, 10); // Back-Top
-    drawWheel(-50, 14, 20, 10); // Back-Bottom
+    drawWheel(20, -18, 16, 8, true); // Front-Top
+    drawWheel(20, 18, 16, 8, true); // Front-Bottom
+    drawWheel(-50, -20, 20, 10, false); // Back-Top
+    drawWheel(-50, 20, 20, 10, false); // Back-Bottom
 
+    // Brake Lights
     if (isBraking) {
         ctx.fillStyle = '#ff0000'; ctx.shadowColor = '#ff0000'; ctx.shadowBlur = 15;
         ctx.beginPath(); ctx.arc(-60, -8, 4, 0, Math.PI * 2); ctx.fill();
         ctx.beginPath(); ctx.arc(-60, 8, 4, 0, Math.PI * 2); ctx.fill();
         ctx.shadowBlur = 0;
     }
+    // Name Tag
     ctx.fillStyle = 'white'; ctx.font = 'bold 12px sans-serif'; ctx.textAlign = 'center';
     ctx.shadowColor = 'black'; ctx.shadowBlur = 4; ctx.fillText(name, 0, -40); ctx.shadowBlur = 0;
     ctx.restore();
-  }, [getRoadCurve]);
+  }, [phys.current.wheelAngle]);
 
   const drawCheckeredLine = (ctx: CanvasRenderingContext2D, x: number, y: number, height: number) => {
     const size = 20;
@@ -247,16 +255,16 @@ export function RaceScreen({
 
     // Draw bots
     botsRef.current.forEach(bot => {
-      drawCar(ctx, bot.x || 0, bot.y || 0, bot.color, bot.name, false, false, phys.current.wheelAngle);
+      drawCar(ctx, bot.x || 0, bot.y || 0, bot.color, bot.name, false, false, phys.current.wheelAngle, 0);
     });
 
     // Draw opponents
     Object.values(opponents).forEach(o => {
-      drawCar(ctx, o.x || 0, o.y || 0, o.color, o.name, false, false, phys.current.wheelAngle);
+      drawCar(ctx, o.x || 0, o.y || 0, o.color, o.name, false, false, phys.current.wheelAngle, 0);
     });
 
     // Draw player
-    drawCar(ctx, phys.current.x, phys.current.y, playerCar.color, playerCar.name, drsState.active, inputs.current.brake, phys.current.wheelAngle);
+    drawCar(ctx, phys.current.x, phys.current.y, playerCar.color, playerCar.name, drsState.active, inputs.current.brake, phys.current.wheelAngle, phys.current.angle);
     
     // Draw sparks
     drawSparks(ctx);
@@ -291,10 +299,43 @@ export function RaceScreen({
     else p.speed *= FRICTION_ROAD;
     if (i.brake) p.speed -= ACCELERATION * 3;
     
-    p.y += (i.right ? LANE_SPEED : 0) + (i.left ? -LANE_SPEED : 0);
+    p.speed = Math.max(0, Math.min(p.speed, currentMaxSpeed));
 
+    // --- Steering Logic ---
     const roadCenterY = getRoadCurve(p.x);
     const carHalfHeight = 20;
+    
+    if(assistEnabled) {
+        // ASSISTED STEERING (Lane-based)
+        p.y += (i.right ? LANE_SPEED : 0) + (i.left ? -LANE_SPEED : 0);
+        const roadSlope = (getRoadCurve(p.x + 1) - roadCenterY);
+        p.angle = roadSlope * 0.5; // Visual tilt
+        p.wheelAngle = 0; // Wheels straight in assist mode
+    } else {
+        // MANUAL STEERING (Realistic)
+        let steeringInput = 0;
+        if(i.left) steeringInput = -1;
+        if(i.right) steeringInput = 1;
+
+        p.wheelAngle = steeringInput * STEERING_SENSITIVITY;
+        const turnRate = p.wheelAngle * (p.speed / MAX_SPEED_NORMAL) * 0.1;
+        p.angle += turnRate;
+
+        // Auto-correct angle slightly towards road direction
+        const roadSlope = (getRoadCurve(p.x + 1) - roadCenterY);
+        p.angle += (roadSlope - p.angle) * STEERING_ASSIST_STRENGTH;
+
+        p.x += p.speed * Math.cos(p.angle);
+        p.y += p.speed * Math.sin(p.angle);
+    }
+    
+    if (assistEnabled) { // Only apply x-speed in assist mode
+      p.x += p.speed;
+    }
+    
+    phys.current.wheelAngle += p.speed * 0.05; // For visual wheel rotation
+
+    // --- Collision Logic ---
     p.collision = false;
 
     if (p.y < roadCenterY - ROAD_WIDTH / 2 + carHalfHeight || p.y > roadCenterY + ROAD_WIDTH / 2 - carHalfHeight) {
@@ -302,55 +343,47 @@ export function RaceScreen({
       p.collision = true;
       const sparkSide = p.y < roadCenterY ? -1 : 1;
       p.y = roadCenterY + (sparkSide * (ROAD_WIDTH / 2 - carHalfHeight));
+      if (!assistEnabled) {
+          p.angle *= -0.5; // Bounce off wall
+      }
       createSparks(p.x - 60, p.y + (sparkSide * 15), 10);
     }
     
-    if (p.x > 300) {
-        botsRef.current.forEach(bot => {
-            if (!bot.x || !bot.y) return;
-            const dx = p.x - bot.x;
-            const dy = p.y - bot.y;
-            const distance = Math.sqrt(dx * dx + dy * dy);
-            if (distance < 80) {
-                p.speed *= 0.85;
-                (bot as any).speed *= 0.9;
-                
-                const overlap = 80 - distance;
-                const pushX = (dx / distance) * overlap * 1.2;
-                const pushY = (dy / distance) * overlap * 1.2;
-                p.x += pushX;
-                p.y += pushY;
-                bot.x -= pushX;
-                bot.y -= pushY;
-                
-                p.collision = true;
-                createSparks(p.x - dx/2, p.y - dy/2, 15);
-            }
-        });
+    const checkAndHandleCollision = (racerA: any, racerB: any) => {
+        if (!racerA.x || !racerA.y || !racerB.x || !racerB.y) return;
+        const dx = racerA.x - racerB.x;
+        const dy = racerA.y - racerB.y;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        if (distance < 80) {
+            const overlap = (80 - distance) / 2;
+            const pushX = (dx / distance) * overlap;
+            const pushY = (dy / distance) * overlap;
+            
+            racerA.x += pushX;
+            racerA.y += pushY;
+            racerB.x -= pushX;
+            racerB.y -= pushY;
 
-        Object.values(opponents).forEach(opp => {
-            if (!opp.x || !opp.y) return;
-            const dx = p.x - opp.x;
-            const dy = p.y - opp.y;
-            const distance = Math.sqrt(dx*dx + dy*dy);
-            if (distance < 80) {
-                p.speed *= 0.85;
+            if (racerA === p) {
+                p.speed *= 0.9;
                 p.collision = true;
-                
-                const overlap = 80 - distance;
-                const pushX = (dx / distance) * overlap * 1.2; 
-                const pushY = (dy / distance) * overlap * 1.2;
-                p.x += pushX;
-                p.y += pushY;
-                
                 createSparks(p.x - dx/2, p.y - dy/2, 15);
+            } else {
+                (racerA.speed as number) *= 0.95;
             }
-        });
+             if (racerB === p) {
+                p.speed *= 0.9;
+                p.collision = true;
+                createSparks(p.x - dx/2, p.y - dy/2, 15);
+            } else {
+                (racerB.speed as number) *= 0.95;
+            }
+        }
     }
 
-    p.speed = Math.max(0, Math.min(p.speed, currentMaxSpeed));
-    p.x += p.speed;
-    p.wheelAngle += p.speed * 0.05;
+    botsRef.current.forEach(bot => checkAndHandleCollision(p, bot));
+    Object.values(opponents).forEach(opp => checkAndHandleCollision(p, opp));
+
 
     setLapInfo(prev => {
       if (!gameActive.current) return prev;
@@ -383,14 +416,7 @@ export function RaceScreen({
         }
         
         for(let j = index + 1; j < botsRef.current.length; j++) {
-            const otherBot = botsRef.current[j];
-            if (!otherBot.x || !otherBot.y) continue;
-            const dx = botX - otherBot.x;
-            const dy = botY - otherBot.y;
-            if (Math.abs(dx) < 120 && Math.abs(dy) < 30) {
-                (bot as any).x -= dx * 0.05;
-                (otherBot as any).x += dx * 0.05;
-            }
+            checkAndHandleCollision(bot, botsRef.current[j]);
         }
 
         if (Math.abs(p.x - botX) > 4000) {
@@ -416,7 +442,7 @@ export function RaceScreen({
     
     draw();
     requestRef.current = requestAnimationFrame(loop);
-  }, [draw, getRoadCurve, playerCar.name, opponents, setGameState, syncMultiplayer, setLapInfo, drsState.active]);
+  }, [draw, getRoadCurve, playerCar.name, opponents, setGameState, syncMultiplayer, setLapInfo, drsState.active, assistEnabled]);
 
 
   const addBot = () => {
