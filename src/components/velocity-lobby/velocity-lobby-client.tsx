@@ -51,7 +51,7 @@ export default function VelocityLobbyClient() {
   // Race State
   const [opponents, setOpponents] = useState<Record<string, Opponent>>({});
   const [lapInfo, setLapInfo] = useState({ current: 1, total: 8, finished: false });
-  const [radioMessage, setRadioMessage] = useState<string | null>(null);
+  const [radioMessage, setRadioMessage] useState<string | null>(null);
   const [radioLoading, setRadioLoading] = useState(false);
   const [finalLeaderboard, setFinalLeaderboard] = useState<Player[]>([]);
 
@@ -192,8 +192,9 @@ export default function VelocityLobbyClient() {
         return;
       }
       const data = doc.data();
+      setTargetLaps(data.laps || 8);
       if (data.status === 'started' && gameState === 'lobby') {
-        startRaceSequence(data.laps || 3);
+        startRaceSequence(data.laps || 8);
       }
     });
 
@@ -307,7 +308,6 @@ export default function VelocityLobbyClient() {
       return;
     }
 
-    setTargetLaps(lobbyDoc.data().laps || 3);
     const isLobbyHost = lobbyDoc.data().hostId === user.uid;
 
     await joinLobbyInternal(finalCode, user.uid, isLobbyHost);
@@ -324,6 +324,10 @@ export default function VelocityLobbyClient() {
     if (!lobbyRef) return;
 
     const playersSnap = await getDocs(collection(lobbyRef, 'players'));
+    if (playersSnap.size >= 8) {
+      toast({ variant: 'destructive', title: "Lobi Dolu", description: "Bu lobiye daha fazla oyuncu katılamaz." });
+      return;
+    }
 
     await setDoc(playerRef, {
       name: playerCar.name,
@@ -333,6 +337,7 @@ export default function VelocityLobbyClient() {
       lastSeen: serverTimestamp(),
       x: 0,
       y: 0,
+      angle: 0,
       lap: 1
     });
 
@@ -397,7 +402,7 @@ export default function VelocityLobbyClient() {
     const playerRef = getPlayerDocRef(lobbyCode, playerId);
     if (!playerRef) return;
     await deleteDoc(playerRef);
-    toast({ title: "Oyuncu Atıldı", description: `Oyuncu ${playerId} lobiden atıldı.` })
+    toast({ title: "Oyuncu Atıldı", description: `Oyuncu ${playerId.slice(0,6)}... lobiden atıldı.` })
   }, [isAdmin, lobbyCode, getPlayerDocRef, toast]);
 
   const resetDatabase = useCallback(async () => {
@@ -450,6 +455,7 @@ export default function VelocityLobbyClient() {
     updateDoc(playerRef, {
       x: phys.x,
       y: phys.y,
+      angle: phys.angle,
       lap: currentLapInfo.current,
       lastSeen: serverTimestamp()
     }).catch(e => console.warn("Sync error:", e));

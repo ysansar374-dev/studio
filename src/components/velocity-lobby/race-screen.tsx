@@ -50,7 +50,7 @@ export function RaceScreen({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const requestRef = useRef<number>();
   const gameActive = useRef(true);
-  const phys = useRef({ x: 0, y: BASE_ROAD_Y, speed: 0, collision: false, wheelAngle: 0, wheelRotation: 0, angle: 0, tyreTemp: 20 });
+  const phys = useRef({ x: 0, y: BASE_ROAD_Y, speed: 0, collision: false, wheelAngle: 0, angle: 0, tyreTemp: 20 });
   const inputs = useRef({ gas: false, brake: false, left: false, right: false, drs: false });
   const botsRef = useRef<Player[]>([]);
   const lastSync = useRef(0);
@@ -93,34 +93,21 @@ export function RaceScreen({
    }, [opponents]);
 
    const getRoadWidth = useCallback((x: number) => {
-    const progress = (x % TRACK_LENGTH) / TRACK_LENGTH;
-    if (progress < 0.1) { // Start wide
-      return 800;
-    } else if (progress < 0.2) { // Narrow down
-      return 800 - (progress - 0.1) * 10 * 400; // 800 -> 400
-    }
-    return 400; // Normal width
+    return 800; // Constant wide road
   }, []);
   
   const getRoadCurve = useCallback((x: number) => {
     const val = x || 0;
-    const progress = val / TRACK_LENGTH;
     let y = BASE_ROAD_Y;
 
-    // A few gentle S-curves
-    y += Math.sin(progress * Math.PI * 2) * 150;
-    y += Math.sin(progress * Math.PI * 6) * 200;
-    
-    // A wider, longer curve
-    if (progress > 0.5) {
-      const longCurveProgress = (progress - 0.5) * 2;
-      y += Math.sin(longCurveProgress * Math.PI) * 350;
-    }
+    // Long, sweeping S-curves
+    y += Math.sin(val / 1000) * 400; 
+    y += Math.cos(val / 1500) * 300;
 
     return y;
   }, []);
 
-  const drawCar = useCallback((ctx: CanvasRenderingContext2D, carX: number, carY: number, color: string, name: string, isDrsOpen: boolean, isBraking: boolean, wheelAngle: number, bodyAngle: number) => {
+  const drawCar = useCallback((ctx: CanvasRenderingContext2D, carX: number, carY: number, color: string, name: string, isDrsOpen: boolean, isBraking: boolean, wheelAngle: number, bodyAngle: number, wheelRotation: number) => {
     ctx.save();
     ctx.translate(carX, carY);
     ctx.rotate(bodyAngle);
@@ -163,7 +150,7 @@ export function RaceScreen({
 
         ctx.strokeStyle = '#4a4a4a';
         ctx.lineWidth = 1;
-        const spokeRotation = phys.current.wheelRotation;
+        const spokeRotation = wheelRotation;
         ctx.rotate(spokeRotation);
         
         ctx.beginPath(); ctx.moveTo(0, -height/2); ctx.lineTo(0, height/2); ctx.stroke();
@@ -315,19 +302,19 @@ export function RaceScreen({
 
     // Draw bots
     botsRef.current.forEach(bot => {
-      drawCar(ctx, bot.x || 0, bot.y || 0, bot.color, bot.name, false, false, 0, 0);
+      drawCar(ctx, bot.x || 0, bot.y || 0, bot.color, bot.name, false, false, 0, 0, 0);
     });
 
     // Draw opponents (interpolated)
      Object.values(interpolatedOpponents.current).forEach(o => {
       if (o.current.id !== userId) {
-        drawCar(ctx, o.current.x || 0, o.current.y || 0, o.current.color, o.current.name, false, false, 0, 0);
+        drawCar(ctx, o.current.x || 0, o.current.y || 0, o.current.color, o.current.name, false, false, 0, o.current.angle || 0, 0);
       }
     });
 
     // Draw player
     if (!lapInfo.finished) {
-      drawCar(ctx, phys.current.x, phys.current.y, playerCar.color, playerCar.name, drsState.active, inputs.current.brake, phys.current.wheelAngle, phys.current.angle);
+      drawCar(ctx, phys.current.x, phys.current.y, playerCar.color, playerCar.name, drsState.active, inputs.current.brake, phys.current.wheelAngle, phys.current.angle, phys.current.x);
     }
     
     // Draw sparks
@@ -407,8 +394,8 @@ export function RaceScreen({
       const roadCenterY = getRoadCurve(p.x);
       const currentRoadWidth = getRoadWidth(p.x);
       const carHalfHeight = 20;
-      
       const gripModifier = p.tyreTemp > 95 ? 1 + (p.tyreTemp - 95) * 0.08 : 1; // Reduced grip when hot
+      const CAR_LENGTH = 70;
       
       if(assistEnabled) {
           // ASSISTED STEERING (Lane-based)
@@ -416,32 +403,34 @@ export function RaceScreen({
           const roadSlope = (getRoadCurve(p.x + 1) - roadCenterY);
           p.angle = roadSlope * 0.5; // Visual tilt
           p.wheelAngle = 0; // Wheels straight in assist mode
+          p.x += p.speed;
       } else {
-          // MANUAL STEERING (Realistic)
+          // MANUAL STEERING (Bicycle Model)
           let steeringInput = 0;
           if(i.left) steeringInput = -1;
           if(i.right) steeringInput = 1;
 
           p.wheelAngle = steeringInput * STEERING_SENSITIVITY;
-          p.tyreTemp += Math.abs(steeringInput * p.speed * 0.005); // Heat from steering
+          p.tyreTemp += Math.abs(steeringInput * p.speed * 0.005);
+          
+          const frontWheelX = p.x + CAR_LENGTH / 2 * Math.cos(p.angle);
+          const frontWheelY = p.y + CAR_LENGTH / 2 * Math.sin(p.angle);
+          const backWheelX = p.x - CAR_LENGTH / 2 * Math.cos(p.angle);
+          const backWheelY = p.y - CAR_LENGTH / 2 * Math.sin(p.angle);
 
-          const turnRate = p.wheelAngle * (p.speed / MAX_SPEED_NORMAL) * 0.1 / gripModifier;
-          p.angle += turnRate;
+          const backWheelSpeed = p.speed / gripModifier;
+          
+          const newBackWheelX = backWheelX + backWheelSpeed * Math.cos(p.angle);
+          const newBackWheelY = backWheelY + backWheelSpeed * Math.sin(p.angle);
+          
+          const newFrontWheelX = frontWheelX + backWheelSpeed * Math.cos(p.angle + p.wheelAngle);
+          const newFrontWheelY = frontWheelY + backWheelSpeed * Math.sin(p.angle + p.wheelAngle);
 
-          // Auto-correct angle slightly towards road direction
-          const roadSlope = (getRoadCurve(p.x + 1) - roadCenterY);
-          p.angle += (roadSlope - p.angle) * STEERING_ASSIST_STRENGTH;
-
-          p.x += p.speed * Math.cos(p.angle);
-          p.y += p.speed * Math.sin(p.angle);
+          p.x = (newFrontWheelX + newBackWheelX) / 2;
+          p.y = (newFrontWheelY + newBackWheelY) / 2;
+          p.angle = Math.atan2(newFrontWheelY - newBackWheelY, newFrontWheelX - newBackWheelX);
       }
       
-      if (assistEnabled) { // Only apply x-speed in assist mode
-        p.x += p.speed;
-      }
-      
-      phys.current.wheelRotation += p.speed * 0.05; // For visual wheel rotation
-
       // --- Collision Logic ---
       p.collision = false;
 
@@ -473,21 +462,21 @@ export function RaceScreen({
               racerB.x -= pushX;
               racerB.y -= pushY;
 
-              if (racerA === p) {
+              if (racerA.id === userId) {
                   p.speed *= 0.9;
                   p.collision = true;
                   p.tyreTemp += 5;
                   createSparks(p.x - dx/2, p.y - dy/2, 15);
-              } else {
-                  (racerA.speed as number) *= 0.95;
+              } else if (racerA.speed) {
+                  racerA.speed *= 0.95;
               }
-              if (racerB === p) {
+              if (racerB.id === userId) {
                   p.speed *= 0.9;
                   p.collision = true;
                   p.tyreTemp += 5;
                   createSparks(p.x - dx/2, p.y - dy/2, 15);
-              } else {
-                  (racerB.speed as number) *= 0.95;
+              } else if (racerB.speed) {
+                  racerB.speed *= 0.95;
               }
           }
       }
@@ -506,6 +495,12 @@ export function RaceScreen({
          if (ipo.current.y !== undefined && ipo.target.y !== undefined) {
             ipo.current.y += (ipo.target.y - ipo.current.y) * lerpFactor;
         }
+        if (ipo.current.angle !== undefined && ipo.target.angle !== undefined) {
+            let angleDiff = ipo.target.angle - ipo.current.angle;
+            while (angleDiff > Math.PI) angleDiff -= 2 * Math.PI;
+            while (angleDiff < -Math.PI) angleDiff += 2 * Math.PI;
+            ipo.current.angle += angleDiff * lerpFactor;
+        }
     }
 
 
@@ -521,7 +516,6 @@ export function RaceScreen({
                     { name: playerCar.name, x: phys.current.x, isMe: true, id: userId, color: playerCar.color, team: playerCar.team, ready: true }
                 ].sort((a, b) => (b.x || 0) - (a.x || 0));
                 
-                // Check if all human players have finished
                 const allOpponentsFinished = Object.values(opponentsRef.current).every(opp => (opp.lap || 0) > lapInfo.total);
 
                 if (allOpponentsFinished) {
@@ -529,7 +523,6 @@ export function RaceScreen({
                     gameActive.current = false;
                     setRaceStatus('finished');
                 }
-                // Don't stop game, just mark this player as finished
                 return { ...prev, finished: true };
             } else {
                 return { ...prev, current: newLap };
@@ -540,6 +533,9 @@ export function RaceScreen({
 
       
     botsRef.current.forEach((bot, index) => {
+        if(!(bot as any).speed) (bot as any).speed = 18 + Math.random() * 4;
+        if(!(bot as any).offsetY) (bot as any).offsetY = (Math.random() - 0.5) * (getRoadWidth(bot.x || 0) - 60);
+
         const botSpeed = (bot as any).speed || 0;
         const botX = bot.x || 0;
         const botY = bot.y || 0;
@@ -584,7 +580,7 @@ export function RaceScreen({
     if (botsRef.current.length >= 12) return;
     const startX = phys.current.x;
     const randomTeam = { color: '#888' };
-    const newBot = {
+    const newBot: Partial<Player> & {speed?: number, offsetY?: number} = {
       id: `bot_${Date.now()}`,
       x: startX - 200 + Math.random() * 400,
       speed: 18 + Math.random() * 4,
@@ -592,7 +588,7 @@ export function RaceScreen({
       offsetY: (Math.random() - 0.5) * (getRoadWidth(startX) - 60),
       name: `Bot ${botsRef.current.length + 1}`
     };
-    (newBot as any).y = getRoadCurve(newBot.x) + newBot.offsetY;
+    (newBot as any).y = getRoadCurve(newBot.x!) + newBot.offsetY!;
     botsRef.current.push(newBot as Player);
   };
   
@@ -654,7 +650,6 @@ export function RaceScreen({
     gameActive.current = true;
     requestRef.current = requestAnimationFrame(loop);
 
-    // Check if all players have finished
     const finishCheckInterval = setInterval(() => {
         if (raceStatus !== 'racing' || !gameActive.current) return;
         
@@ -762,8 +757,8 @@ export function RaceScreen({
                                 <Button
                                   size="icon"
                                   variant="destructive"
-                                  className="h-5 w-5 opacity-0 group-hover:opacity-100 transition-opacity"
-                                  onClick={() => d.id && kickPlayer(d.id)}
+                                  className="h-5 w-5 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-auto"
+                                  onClick={(e) => { e.stopPropagation(); d.id && kickPlayer(d.id); }}
                                 >
                                   <X size={12} />
                                 </Button>
@@ -791,7 +786,7 @@ export function RaceScreen({
          <button onClick={() => triggerRaceEngineer(phys.current, drsState, lapInfoRef.current)} disabled={radioLoading || raceStatus !== 'racing'} className="bg-primary/80 hover:bg-primary text-white px-5 py-3 rounded-xl font-bold text-xs flex items-center gap-2 backdrop-blur border transition-all disabled:opacity-50 disabled:cursor-wait">
             {radioLoading ? <Loader2 className="animate-spin" size={16} /> : <Radio size={16} />} TELSİZ (R)
          </button>
-         <button onClick={addBot} disabled={raceStatus !== 'racing'} className="bg-secondary/80 hover:bg-secondary text-white px-5 py-3 rounded-xl font-bold text-xs flex items-center gap-2 backdrop-blur border transition-all disabled:opacity-50"><Plus size={14} /> BOT EKLE</button>
+         {isAdmin && <button onClick={addBot} disabled={raceStatus !== 'racing'} className="bg-secondary/80 hover:bg-secondary text-white px-5 py-3 rounded-xl font-bold text-xs flex items-center gap-2 backdrop-blur border transition-all disabled:opacity-50"><Plus size={14} /> BOT EKLE</button>}
          <button onClick={quitRace} className="bg-destructive/80 hover:bg-destructive text-white px-5 py-3 rounded-xl font-bold text-xs flex items-center gap-2 backdrop-blur transition-all"><LogOut size={14} /> ÇIK</button>
       </div>
 
