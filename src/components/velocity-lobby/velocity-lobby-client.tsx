@@ -119,10 +119,10 @@ export default function VelocityLobbyClient() {
   // Debounced effect for team name generation
   useEffect(() => {
     const handler = setTimeout(() => {
-      if (playerCar.name && playerCar.name !== 'Pilot') {
+      if (playerCar.name && playerCar.name !== 'Pilot' && !playerCar.name.startsWith('Pilot ')) {
         generateTeamName(playerCar.name);
       }
-    }, 500); // 500ms delay
+    }, 1000); // 1s delay
 
     return () => {
       clearTimeout(handler);
@@ -182,16 +182,18 @@ export default function VelocityLobbyClient() {
       if (u) {
         setUser(u);
         setConnectionStatus('connected');
-        const randomName = `Pilot ${u.uid.slice(0, 4)}`;
-        setPlayerCar(p => ({ ...p, name: randomName }));
-        generateTeamName(randomName); // Also generate a team name on initial load
+        if (playerCar.name === 'Pilot' || playerCar.name.startsWith('Pilot ')) {
+            const randomName = `Pilot ${u.uid.slice(0, 4)}`;
+            setPlayerCar(p => ({ ...p, name: randomName }));
+            generateTeamName(randomName); // Also generate a team name on initial load
+        }
       } else {
         setUser(null);
         setConnectionStatus('disconnected');
       }
     });
     return () => unsub();
-  }, [config.checked, config.config, toast, getFirebase, generateTeamName]);
+  }, [config.checked, config.config, toast, getFirebase, generateTeamName, playerCar.name]);
 
   const quitRace = useCallback(() => {
     setGameState('menu');
@@ -494,7 +496,7 @@ export default function VelocityLobbyClient() {
     return <LobbyScreen {...{ lobbyCode, lobbyPlayers, isHost, startRaceByHost, quitRace, userId: user?.uid ?? null, isAdmin, kickPlayer }} />;
   }
   if (gameState === 'race') {
-    return <RaceScreen {...{ playerCar, opponents, setGameState, lapInfo, setLapInfo, syncMultiplayer, triggerRaceEngineer, radioMessage, radioLoading, quitRace, isAdmin, kickPlayer, assistEnabled, onRaceFinish, userId: user.uid }} />;
+    return <RaceScreen {...{ playerCar, opponents, setGameState, lapInfo, setLapInfo, syncMultiplayer, triggerRaceEngineer, radioMessage, radioLoading, quitRace, isAdmin, kickPlayer, assistEnabled, onRaceFinish, userId: user.uid, lobbyPlayers }} />;
   }
   if (gameState === 'finished') {
     return <FinishedScreen playerCar={playerCar} setGameState={setGameState} leaderboard={finalLeaderboard} />;

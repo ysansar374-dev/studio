@@ -22,6 +22,7 @@ type RaceScreenProps = {
   assistEnabled: boolean;
   onRaceFinish: (leaderboard: Player[]) => void;
   userId: string;
+  lobbyPlayers: Player[];
 };
 
 type RaceStatus = 'countdown' | 'racing' | 'finished';
@@ -45,12 +46,48 @@ export function RaceScreen({
   kickPlayer,
   assistEnabled,
   onRaceFinish,
-  userId
+  userId,
+  lobbyPlayers
 }: RaceScreenProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const requestRef = useRef<number>();
   const gameActive = useRef(true);
-  const phys = useRef({ x: 0, y: BASE_ROAD_Y, speed: 0, collision: false, wheelAngle: 0, angle: 0, tyreTemp: 20 });
+  
+  const getRoadCurve = useCallback((x: number) => {
+    const val = x || 0;
+    // Wide, sweeping S-curves, generally moving downwards
+    let y = BASE_ROAD_Y + val * 0.05; 
+    y += Math.sin(val / 2500) * 1000; 
+    y += Math.cos(val / 1800) * 600; 
+    return y;
+  }, []);
+
+  const getStartingPosition = useCallback((playerId: string) => {
+      const sortedPlayers = [...lobbyPlayers].sort((a, b) => a.id.localeCompare(b.id));
+      const playerIndex = sortedPlayers.findIndex(p => p.id === playerId);
+      
+      if (playerIndex === -1) {
+          // Fallback for player not found (should not happen)
+          return { x: 0, y: getRoadCurve(0) };
+      }
+
+      const numPlayers = sortedPlayers.length;
+      const laneWidth = 40; 
+      const gridDepth = 100;
+
+      const column = playerIndex % 2; // 0 for left, 1 for right
+      const row = Math.floor(playerIndex / 2);
+
+      const yOffset = (column - 0.5) * laneWidth;
+      const xOffset = -row * gridDepth;
+
+      return {
+          x: xOffset,
+          y: getRoadCurve(xOffset) + yOffset,
+      };
+  }, [lobbyPlayers, getRoadCurve]);
+
+  const phys = useRef({ x: getStartingPosition(userId).x, y: getStartingPosition(userId).y, speed: 0, collision: false, wheelAngle: 0, angle: 0, tyreTemp: 20 });
   const inputs = useRef({ gas: false, brake: false, left: false, right: false, drs: false });
   const botsRef = useRef<Player[]>([]);
   const lastSync = useRef(0);
@@ -79,7 +116,9 @@ export function RaceScreen({
    useEffect(() => {
        for (const id in opponents) {
            if (!interpolatedOpponents.current[id]) {
-               interpolatedOpponents.current[id] = { current: opponents[id], target: opponents[id] };
+               const startPos = getStartingPosition(id);
+               const initialOpponentState = { ...opponents[id], x: startPos.x, y: startPos.y, angle: 0 };
+               interpolatedOpponents.current[id] = { current: initialOpponentState, target: initialOpponentState };
            } else {
                interpolatedOpponents.current[id].target = opponents[id];
            }
@@ -90,23 +129,12 @@ export function RaceScreen({
                delete interpolatedOpponents.current[id];
            }
        }
-   }, [opponents]);
+   }, [opponents, getStartingPosition]);
 
    const getRoadWidth = useCallback((x: number) => {
     return 800;
   }, []);
   
-  const getRoadCurve = useCallback((x: number) => {
-    const val = x || 0;
-    let y = BASE_ROAD_Y + val * 0.05; // General downward slope
-
-    // Wide, sweeping S-curves
-    y += Math.sin(val / 2500) * 1000;
-    y += Math.cos(val / 1800) * 600;
-
-    return y;
-  }, []);
-
 
   const drawCar = useCallback((ctx: CanvasRenderingContext2D, carX: number, carY: number, color: string, name: string, isDrsOpen: boolean, isBraking: boolean, wheelAngle: number, bodyAngle: number, wheelRotation: number) => {
     ctx.save();
@@ -342,7 +370,7 @@ export function RaceScreen({
     const allRacers = [
       ...Object.values(interpolatedOpponents.current).map(o => o.current),
       ...botsRef.current,
-      { name: playerCar.name, id: userId, x: phys.current.x }
+      { name: playerCar.name, id: userId, x: phys.current.x, isMe: true }
     ].sort((a, b) => (b.x || 0) - (a.x || 0));
     
     const playerRank = allRacers.findIndex(r => r.id === userId);
