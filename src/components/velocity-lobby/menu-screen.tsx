@@ -1,6 +1,6 @@
 'use client';
 
-import { Check, Loader2, LogIn, PlusCircle, Settings, Users, Gamepad2, Trash2, ShieldCheck, RefreshCw, Shield } from "lucide-react";
+import { Check, Loader2, LogIn, PlusCircle, Settings, Users, Gamepad2, Trash2, ShieldCheck, RefreshCw, Shield, Sparkles } from "lucide-react";
 import { TEAMS } from "@/lib/constants";
 import type { PlayerCar, Team, Lobby } from "@/types";
 import { Button } from "@/components/ui/button";
@@ -15,7 +15,8 @@ type MenuScreenProps = {
   playerCar: PlayerCar;
   setPlayerCar: (updater: (car: PlayerCar) => PlayerCar) => void;
   aiLoading: boolean;
-  generateTeamName: () => void;
+  onGenerateTeamName: () => void;
+  onPilotNameChange: (name: string) => void;
   inputLobbyCode: string;
   setInputLobbyCode: (code: string) => void;
   joinLobby: (code?: string) => void;
@@ -51,17 +52,17 @@ const Controls = () => (
     </Card>
 );
 
-export function MenuScreen({ playerCar, setPlayerCar, aiLoading, generateTeamName, inputLobbyCode, setInputLobbyCode, joinLobby, createLobby, connectionStatus, resetDatabase, isAdmin, handleAdminLogin, publicLobbies, refreshLobbies, lobbiesLoading, assistEnabled, setAssistEnabled }: MenuScreenProps) {
+export function MenuScreen({ playerCar, setPlayerCar, aiLoading, onPilotNameChange, onGenerateTeamName, inputLobbyCode, setInputLobbyCode, joinLobby, createLobby, connectionStatus, resetDatabase, isAdmin, handleAdminLogin, publicLobbies, refreshLobbies, lobbiesLoading, assistEnabled, setAssistEnabled }: MenuScreenProps) {
 
   const selectTeam = (team: Team) => {
-    setPlayerCar(car => ({ ...car, color: team.color, team: team.name, teamId: team.id }));
+    setPlayerCar(car => ({ ...car, color: team.color, teamId: team.id, team: team.name }));
   };
 
   const connectionColor = connectionStatus === 'connected' ? 'text-green-400' : connectionStatus === 'error' ? 'text-red-500' : 'text-yellow-400';
 
   return (
     <div className="h-screen bg-background flex items-center justify-center text-foreground font-sans p-4 relative">
-      <div className="absolute top-4 text-center w-full font-bold text-2xl text-accent/50 font-headline tracking-widest pointer-events-none">lezziya</div>
+       <div className="absolute top-4 text-center w-full font-bold text-2xl text-accent/50 font-headline tracking-widest pointer-events-none">lezziya</div>
       <div className="bg-card/80 backdrop-blur-md p-8 sm:p-10 rounded-2xl shadow-2xl max-w-7xl w-full border grid grid-cols-1 lg:grid-cols-3 gap-12">
         <div className="lg:col-span-1">
           <h1 className="text-5xl sm:text-6xl font-black text-transparent bg-clip-text bg-gradient-to-r from-primary to-accent italic tracking-tighter mb-2 font-headline">VELOCITY LOBBY</h1>
@@ -70,11 +71,21 @@ export function MenuScreen({ playerCar, setPlayerCar, aiLoading, generateTeamNam
           <div className="space-y-6">
             <div>
               <label className="text-xs font-bold text-muted-foreground uppercase">Pilot Adı</label>
-              <Input value={playerCar.name} onChange={e => setPlayerCar(car => ({ ...car, name: e.target.value }))} className="mt-1 text-lg font-bold" />
+              <Input value={playerCar.name} onChange={e => onPilotNameChange(e.target.value)} className="mt-1 text-lg font-bold" />
             </div>
 
             <div>
-              <label className="text-xs font-bold text-muted-foreground uppercase mb-2 block">Takım Seç</label>
+              <label className="text-xs font-bold text-muted-foreground uppercase">Takım Adı</label>
+              <div className="flex gap-2 items-center">
+                <Input value={playerCar.team} onChange={e => setPlayerCar(car => ({ ...car, team: e.target.value }))} className="mt-1 text-lg font-bold" />
+                <Button onClick={onGenerateTeamName} size="icon" variant="outline" className="mt-1 flex-shrink-0" disabled={aiLoading}>
+                  {aiLoading ? <Loader2 className="animate-spin" /> : <Sparkles className="text-accent" />}
+                </Button>
+              </div>
+            </div>
+
+            <div>
+              <label className="text-xs font-bold text-muted-foreground uppercase mb-2 block">Araç Rengi</label>
               <div className="grid grid-cols-1 gap-2">
                 {TEAMS.map(team => (
                   <button key={team.id} onClick={() => selectTeam(team)} className={`flex items-center p-2 rounded-lg border transition-all ${playerCar.teamId === team.id ? 'bg-primary border-accent ring-2 ring-offset-2 ring-offset-card ring-accent' : 'bg-muted/50 border-border hover:bg-muted'}`}>

@@ -8,6 +8,7 @@ export const FRICTION_ROAD = 0.99;
 export const WALL_BOUNCE = 0.6;
 export const LANE_SPEED = 5;
 export const TRACK_LENGTH = 15000; 
+export const SYNC_INTERVAL = 100; // ms, for ~10 updates per second
 
 export const ROAD_WIDTH = 600; 
 export const BASE_ROAD_Y = 400;

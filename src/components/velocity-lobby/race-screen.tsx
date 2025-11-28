@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, useCallback } from 'react';
 import type { PlayerCar, Player, Opponent } from '@/types';
-import { ACCELERATION, BASE_ROAD_Y, FRICTION_ROAD, LANE_SPEED, MAX_SPEED_DRS, MAX_SPEED_NORMAL, ROAD_WIDTH, TRACK_LENGTH, WALL_BOUNCE, STEERING_ASSIST_STRENGTH, STEERING_SENSITIVITY } from '@/lib/constants';
+import { ACCELERATION, BASE_ROAD_Y, FRICTION_ROAD, LANE_SPEED, MAX_SPEED_DRS, MAX_SPEED_NORMAL, ROAD_WIDTH, TRACK_LENGTH, WALL_BOUNCE, STEERING_ASSIST_STRENGTH, STEERING_SENSITIVITY, SYNC_INTERVAL } from '@/lib/constants';
 import { Loader2, LogOut, Plus, Radio, Zap, ShieldAlert, X, Thermometer } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
@@ -20,6 +20,7 @@ type RaceScreenProps = {
   isAdmin: boolean;
   kickPlayer: (playerId: string) => void;
   assistEnabled: boolean;
+  onRaceFinish: (leaderboard: Player[]) => void;
 };
 
 export function RaceScreen({
@@ -35,7 +36,8 @@ export function RaceScreen({
   quitRace,
   isAdmin,
   kickPlayer,
-  assistEnabled
+  assistEnabled,
+  onRaceFinish,
 }: RaceScreenProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const requestRef = useRef<number>();
@@ -272,10 +274,10 @@ export function RaceScreen({
     ctx.restore();
     
     drawMiniMap(ctx, screenW, screenH);
-  }, [getRoadCurve, drawCar, drawSparks, opponents, playerCar, drsState.active]);
+  }, [getRoadCurve, drawCar, drawSparks, opponents, playerCar.color, playerCar.name, drsState.active]);
 
 
-  const loop = useCallback(() => {
+  const loop = useCallback((time: number) => {
     if (!gameActive.current) return;
 
     const p = phys.current;
@@ -417,7 +419,12 @@ export function RaceScreen({
       if (newLap > prev.current) {
         if (newLap > prev.total) {
           if (!prev.finished) {
-            setGameState('finished');
+            const finalLeaderboard = [
+                ...Object.values(opponents),
+                ...botsRef.current,
+                { name: playerCar.name, x: phys.current.x, isMe: true, id: 'player', color: playerCar.color, team: playerCar.team, ready: true }
+            ].sort((a, b) => (b.x || 0) - (a.x || 0));
+            onRaceFinish(finalLeaderboard as Player[]);
             gameActive.current = false;
           }
           return { ...prev, finished: true };
@@ -461,14 +468,14 @@ export function RaceScreen({
         setLeaderboardData(allRacers as Player[]);
     }
     
-    if (Date.now() - lastSync.current > 2000) {
+    if (time - lastSync.current > SYNC_INTERVAL) {
         syncMultiplayer(phys.current, lapInfoRef.current);
-        lastSync.current = Date.now();
+        lastSync.current = time;
     }
     
     draw();
     requestRef.current = requestAnimationFrame(loop);
-  }, [draw, getRoadCurve, playerCar.name, opponents, setGameState, syncMultiplayer, setLapInfo, assistEnabled]);
+  }, [draw, getRoadCurve, playerCar, opponents, setLapInfo, syncMultiplayer, assistEnabled, onRaceFinish]);
 
 
   const addBot = () => {

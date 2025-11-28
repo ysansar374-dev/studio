@@ -15,6 +15,7 @@ import { useFirebaseConfig } from '@/lib/firebase';
 import type { PlayerCar, Player, Opponent, Lobby } from '@/types';
 import { useToast } from '@/hooks/use-toast';
 import { Loader2 } from 'lucide-react';
+import { useDebouncedCallback } from 'use-debounce';
 
 // --- Main Component ---
 export default function VelocityLobbyClient() {
@@ -52,6 +53,7 @@ export default function VelocityLobbyClient() {
   const [lapInfo, setLapInfo] = useState({ current: 1, total: 3, finished: false });
   const [radioMessage, setRadioMessage] = useState<string | null>(null);
   const [radioLoading, setRadioLoading] = useState(false);
+  const [finalLeaderboard, setFinalLeaderboard] = useState<Player[]>([]);
 
   // Firebase Refs
   const appRef = useRef<FirebaseApp | null>(null);
@@ -93,6 +95,11 @@ export default function VelocityLobbyClient() {
   const startRaceSequence = useCallback((laps: number) => {
     setLapInfo({ current: 1, total: laps, finished: false });
     setGameState('race');
+  }, []);
+
+  const onRaceFinish = useCallback((leaderboard: Player[]) => {
+    setFinalLeaderboard(leaderboard);
+    setGameState('finished');
   }, []);
 
   // --- Initialization ---
@@ -147,14 +154,16 @@ export default function VelocityLobbyClient() {
       if (u) {
         setUser(u);
         setConnectionStatus('connected');
-        setPlayerCar(p => ({ ...p, name: `Pilot ${u.uid.slice(0, 4)}` }));
+        const randomName = `Pilot ${u.uid.slice(0, 4)}`;
+        setPlayerCar(p => ({ ...p, name: randomName }));
+        generateTeamName(randomName); // Also generate a team name on initial load
       } else {
         setUser(null);
         setConnectionStatus('disconnected');
       }
     });
     return () => unsub();
-  }, [config, toast, getFirebase]);
+  }, [config.checked, config.config, toast, getFirebase]);
 
   const quitRace = useCallback(() => {
     setGameState('menu');
@@ -222,12 +231,24 @@ export default function VelocityLobbyClient() {
   }, [gameState, lobbyCode, user, getFirebase, config.appId, getLobbyDocRef, startRaceSequence, toast, quitRace]);
 
   // --- AI Actions ---
-  const generateTeamName = async () => {
-    if (!playerCar.name || aiLoading) return;
+  const generateTeamName = useDebouncedCallback(async (pilotName: string) => {
+    if (!pilotName || aiLoading) return;
     setAiLoading(true);
-    const teamName = await generateTeamNameAction({ pilotName: playerCar.name });
-    setPlayerCar(prev => ({ ...prev, team: teamName.replace(/["']/g, '').trim() }));
-    setAiLoading(false);
+    try {
+      const teamName = await generateTeamNameAction({ pilotName });
+      setPlayerCar(prev => ({ ...prev, team: teamName.replace(/["']/g, '').trim() }));
+    } catch(e) {
+      console.error("AI team name generation failed", e);
+      // Fallback to a default name
+      setPlayerCar(prev => ({ ...prev, team: "Cyber Stallions" }));
+    } finally {
+      setAiLoading(false);
+    }
+  }, 500);
+
+  const handlePilotNameChange = (name: string) => {
+    setPlayerCar(p => ({ ...p, name }));
+    generateTeamName(name);
   };
 
   const triggerRaceEngineer = async (phys: any, drsState: any, currentLapInfo: any) => {
@@ -448,16 +469,16 @@ export default function VelocityLobbyClient() {
   }
 
   if (gameState === 'menu') {
-    return <MenuScreen {...{ playerCar, setPlayerCar, aiLoading, generateTeamName, inputLobbyCode, setInputLobbyCode, joinLobby, createLobby, connectionStatus, resetDatabase, isAdmin, handleAdminLogin, publicLobbies, refreshLobbies, lobbiesLoading, assistEnabled, setAssistEnabled }} />;
+    return <MenuScreen {...{ playerCar, setPlayerCar, aiLoading, onGenerateTeamName: () => generateTeamName(playerCar.name), onPilotNameChange: handlePilotNameChange, inputLobbyCode, setInputLobbyCode, joinLobby, createLobby, connectionStatus, resetDatabase, isAdmin, handleAdminLogin, publicLobbies, refreshLobbies, lobbiesLoading, assistEnabled, setAssistEnabled }} />;
   }
   if (gameState === 'lobby') {
     return <LobbyScreen {...{ lobbyCode, lobbyPlayers, isHost, startRaceByHost, quitRace, userId: user?.uid ?? null, isAdmin, kickPlayer }} />;
   }
   if (gameState === 'race') {
-    return <RaceScreen {...{ playerCar, opponents, setGameState, lapInfo, setLapInfo, syncMultiplayer, triggerRaceEngineer, radioMessage, radioLoading, quitRace, isAdmin, kickPlayer, assistEnabled }} />;
+    return <RaceScreen {...{ playerCar, opponents, setGameState, lapInfo, setLapInfo, syncMultiplayer, triggerRaceEngineer, radioMessage, radioLoading, quitRace, isAdmin, kickPlayer, assistEnabled, onRaceFinish }} />;
   }
   if (gameState === 'finished') {
-    return <FinishedScreen playerCar={playerCar} setGameState={setGameState} />;
+    return <FinishedScreen playerCar={playerCar} setGameState={setGameState} leaderboard={finalLeaderboard} />;
   }
 
   // Default loading/initial state
