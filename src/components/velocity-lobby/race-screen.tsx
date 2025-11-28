@@ -93,19 +93,20 @@ export function RaceScreen({
    }, [opponents]);
 
    const getRoadWidth = useCallback((x: number) => {
-    return 800; // Constant wide road
+    return 800;
   }, []);
   
   const getRoadCurve = useCallback((x: number) => {
     const val = x || 0;
-    let y = BASE_ROAD_Y;
+    let y = BASE_ROAD_Y + val * 0.05; // General downward slope
 
-    // Long, sweeping S-curves
-    y += Math.sin(val / 1000) * 400; 
-    y += Math.cos(val / 1500) * 300;
+    // Wide, sweeping S-curves
+    y += Math.sin(val / 2500) * 1000;
+    y += Math.cos(val / 1800) * 600;
 
     return y;
   }, []);
+
 
   const drawCar = useCallback((ctx: CanvasRenderingContext2D, carX: number, carY: number, color: string, name: string, isDrsOpen: boolean, isBraking: boolean, wheelAngle: number, bodyAngle: number, wheelRotation: number) => {
     ctx.save();
@@ -128,13 +129,18 @@ export function RaceScreen({
     // DRS
     ctx.fillStyle = isDrsOpen ? '#22c55e' : '#1e293b';
     ctx.save();
-    ctx.translate(-65, -25);
-    if (isDrsOpen) ctx.rotate(-0.4);
-    ctx.fillRect(0, 0, 25, 6);
+    ctx.translate(-65, 0);
+    if (isDrsOpen) {
+      // Flap open
+      ctx.fillRect(0, -25, 25, 4);
+    } else {
+      // Flap closed
+      ctx.fillRect(0, -2, 25, 4);
+    }
     ctx.restore();
 
     // Front Wing
-    ctx.fillStyle = '#1e293b'; ctx.fillRect(45, 5, 10, 4);
+    ctx.fillStyle = '#1e293b'; ctx.fillRect(45, -20, 10, 40);
     ctx.fillStyle = '#0f172a';
 
     // Wheels
@@ -196,7 +202,7 @@ export function RaceScreen({
     ctx.save();
     ctx.beginPath(); ctx.roundRect(mapX, mapY, mapW, mapH, 10); ctx.clip();
     const scaleX = mapW / TRACK_LENGTH;
-    const scaleY = 0.15;
+    const scaleY = 0.1;
     ctx.beginPath(); ctx.strokeStyle = 'hsl(var(--muted-foreground))'; ctx.lineWidth = 4;
     for (let i = 0; i < TRACK_LENGTH; i += 200) {
       const mx = mapX + (i * scaleX);
@@ -394,7 +400,7 @@ export function RaceScreen({
       const roadCenterY = getRoadCurve(p.x);
       const currentRoadWidth = getRoadWidth(p.x);
       const carHalfHeight = 20;
-      const gripModifier = p.tyreTemp > 95 ? 1 + (p.tyreTemp - 95) * 0.08 : 1; // Reduced grip when hot
+      const gripModifier = p.tyreTemp > 95 ? 1 - (p.tyreTemp - 95) * 0.008 : 1; // Reduced grip when hot
       const CAR_LENGTH = 70;
       
       if(assistEnabled) {
@@ -418,7 +424,7 @@ export function RaceScreen({
           const backWheelX = p.x - CAR_LENGTH / 2 * Math.cos(p.angle);
           const backWheelY = p.y - CAR_LENGTH / 2 * Math.sin(p.angle);
 
-          const backWheelSpeed = p.speed / gripModifier;
+          const backWheelSpeed = p.speed * gripModifier;
           
           const newBackWheelX = backWheelX + backWheelSpeed * Math.cos(p.angle);
           const newBackWheelY = backWheelY + backWheelSpeed * Math.sin(p.angle);
@@ -802,3 +808,6 @@ export function RaceScreen({
   );
 
 }
+
+    
+    

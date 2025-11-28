@@ -15,7 +15,6 @@ import { useFirebaseConfig } from '@/lib/firebase';
 import type { PlayerCar, Player, Opponent, Lobby } from '@/types';
 import { useToast } from '@/hooks/use-toast';
 import { Loader2 } from 'lucide-react';
-import { useDebouncedCallback } from 'use-debounce';
 
 // --- Main Component ---
 export default function VelocityLobbyClient() {
@@ -51,7 +50,7 @@ export default function VelocityLobbyClient() {
   // Race State
   const [opponents, setOpponents] = useState<Record<string, Opponent>>({});
   const [lapInfo, setLapInfo] = useState({ current: 1, total: 8, finished: false });
-  const [radioMessage, setRadioMessage] useState<string | null>(null);
+  const [radioMessage, setRadioMessage] = useState<string | null>(null);
   const [radioLoading, setRadioLoading] = useState(false);
   const [finalLeaderboard, setFinalLeaderboard] = useState<Player[]>([]);
 
@@ -101,6 +100,35 @@ export default function VelocityLobbyClient() {
     setFinalLeaderboard(leaderboard);
     setGameState('finished');
   }, []);
+
+  const generateTeamName = useCallback(async (pilotName: string) => {
+    if (!pilotName || aiLoading) return;
+    setAiLoading(true);
+    try {
+      const teamName = await generateTeamNameAction({ pilotName });
+      setPlayerCar(prev => ({ ...prev, team: teamName.replace(/["']/g, '').trim() }));
+    } catch(e) {
+      console.error("AI team name generation failed", e);
+      // Fallback to a default name
+      setPlayerCar(prev => ({ ...prev, team: "Cyber Stallions" }));
+    } finally {
+      setAiLoading(false);
+    }
+  }, [aiLoading]);
+
+  // Debounced effect for team name generation
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      if (playerCar.name && playerCar.name !== 'Pilot') {
+        generateTeamName(playerCar.name);
+      }
+    }, 500); // 500ms delay
+
+    return () => {
+      clearTimeout(handler);
+    };
+  }, [playerCar.name, generateTeamName]);
+
 
   // --- Initialization ---
   useEffect(() => {
@@ -163,7 +191,7 @@ export default function VelocityLobbyClient() {
       }
     });
     return () => unsub();
-  }, [config.checked, config.config, toast, getFirebase]);
+  }, [config.checked, config.config, toast, getFirebase, generateTeamName]);
 
   const quitRace = useCallback(() => {
     setGameState('menu');
@@ -232,24 +260,9 @@ export default function VelocityLobbyClient() {
   }, [gameState, lobbyCode, user, getFirebase, config.appId, getLobbyDocRef, startRaceSequence, toast, quitRace]);
 
   // --- AI Actions ---
-  const generateTeamName = useDebouncedCallback(async (pilotName: string) => {
-    if (!pilotName || aiLoading) return;
-    setAiLoading(true);
-    try {
-      const teamName = await generateTeamNameAction({ pilotName });
-      setPlayerCar(prev => ({ ...prev, team: teamName.replace(/["']/g, '').trim() }));
-    } catch(e) {
-      console.error("AI team name generation failed", e);
-      // Fallback to a default name
-      setPlayerCar(prev => ({ ...prev, team: "Cyber Stallions" }));
-    } finally {
-      setAiLoading(false);
-    }
-  }, 500);
-
+  
   const handlePilotNameChange = (name: string) => {
     setPlayerCar(p => ({ ...p, name }));
-    generateTeamName(name);
   };
 
   const triggerRaceEngineer = async (phys: any, drsState: any, currentLapInfo: any) => {
@@ -475,7 +488,7 @@ export default function VelocityLobbyClient() {
   }
 
   if (gameState === 'menu') {
-    return <MenuScreen {...{ playerCar, setPlayerCar, aiLoading, onGenerateTeamName: () => generateTeamName(playerCar.name), onPilotNameChange: handlePilotNameChange, inputLobbyCode, setInputLobbyCode, joinLobby, createLobby, connectionStatus, resetDatabase, isAdmin, handleAdminLogin, publicLobbies, refreshLobbies, lobbiesLoading, assistEnabled, setAssistEnabled }} />;
+    return <MenuScreen {...{ playerCar, setPlayerCar, aiLoading, onPilotNameChange: handlePilotNameChange, onGenerateTeamName: () => generateTeamName(playerCar.name), inputLobbyCode, setInputLobbyCode, joinLobby, createLobby, connectionStatus, resetDatabase, isAdmin, handleAdminLogin, publicLobbies, refreshLobbies, lobbiesLoading, assistEnabled, setAssistEnabled }} />;
   }
   if (gameState === 'lobby') {
     return <LobbyScreen {...{ lobbyCode, lobbyPlayers, isHost, startRaceByHost, quitRace, userId: user?.uid ?? null, isAdmin, kickPlayer }} />;
