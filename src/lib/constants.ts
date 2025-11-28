@@ -1,8 +1,8 @@
 import type { Team } from "@/types";
 
 // --- GAME SETTINGS ---
-export const MAX_SPEED_NORMAL = 22; 
-export const MAX_SPEED_DRS = 32; 
+export const MAX_SPEED_NORMAL = 32; 
+export const MAX_SPEED_DRS = 35; 
 export const ACCELERATION = 0.08;
 export const FRICTION_ROAD = 0.99;
 export const WALL_BOUNCE = 0.6;

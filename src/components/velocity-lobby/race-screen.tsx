@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import type { PlayerCar, Player, Opponent } from '@/types';
 import { ACCELERATION, BASE_ROAD_Y, FRICTION_ROAD, LANE_SPEED, MAX_SPEED_DRS, MAX_SPEED_NORMAL, ROAD_WIDTH, TRACK_LENGTH, WALL_BOUNCE, STEERING_ASSIST_STRENGTH, STEERING_SENSITIVITY } from '@/lib/constants';
-import { Loader2, LogOut, Plus, Radio, Zap, ShieldAlert, X } from 'lucide-react';
+import { Loader2, LogOut, Plus, Radio, Zap, ShieldAlert, X, Thermometer } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 type RaceScreenProps = {
@@ -40,7 +40,7 @@ export function RaceScreen({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const requestRef = useRef<number>();
   const gameActive = useRef(true);
-  const phys = useRef({ x: 0, y: BASE_ROAD_Y, speed: 0, collision: false, wheelAngle: 0, wheelRotation: 0, angle: 0 });
+  const phys = useRef({ x: 0, y: BASE_ROAD_Y, speed: 0, collision: false, wheelAngle: 0, wheelRotation: 0, angle: 0, tyreTemp: 20 });
   const inputs = useRef({ gas: false, brake: false, left: false, right: false, drs: false });
   const botsRef = useRef<Player[]>([]);
   const lastSync = useRef(0);
@@ -293,17 +293,38 @@ export function RaceScreen({
     });
 
     const currentMaxSpeed = drsState.active ? MAX_SPEED_DRS : MAX_SPEED_NORMAL;
-    const currentAccel = drsState.active ? ACCELERATION * 1.5 : ACCELERATION;
+
+    let dynamicAccel = ACCELERATION;
+    const currentSpeedKmh = p.speed * 10;
+    
+    if (currentSpeedKmh > 290) {
+        dynamicAccel = ACCELERATION * 0.1;
+    } else if (currentSpeedKmh > 220) {
+        dynamicAccel = ACCELERATION * 0.3;
+    }
+
+    const currentAccel = drsState.active ? dynamicAccel * 1.5 : dynamicAccel;
 
     if (i.gas) p.speed += currentAccel;
     else p.speed *= FRICTION_ROAD;
-    if (i.brake) p.speed -= ACCELERATION * 3;
+    if (i.brake) {
+        p.speed -= ACCELERATION * 3;
+        p.tyreTemp += 0.2; // Braking heats tyres
+    }
     
     p.speed = Math.max(0, Math.min(p.speed, currentMaxSpeed));
+
+    // Tyre Temp
+    p.tyreTemp += (p.speed / MAX_SPEED_NORMAL) * 0.05; // Heat from speed
+    p.tyreTemp -= 0.08; // Cooling
+    p.tyreTemp = Math.max(20, Math.min(p.tyreTemp, 120));
+
 
     // --- Steering Logic ---
     const roadCenterY = getRoadCurve(p.x);
     const carHalfHeight = 20;
+    
+    const gripModifier = p.tyreTemp > 95 ? 1 + (p.tyreTemp - 95) * 0.08 : 1; // Reduced grip when hot
     
     if(assistEnabled) {
         // ASSISTED STEERING (Lane-based)
@@ -318,7 +339,9 @@ export function RaceScreen({
         if(i.right) steeringInput = 1;
 
         p.wheelAngle = steeringInput * STEERING_SENSITIVITY;
-        const turnRate = p.wheelAngle * (p.speed / MAX_SPEED_NORMAL) * 0.1;
+        p.tyreTemp += Math.abs(steeringInput * p.speed * 0.005); // Heat from steering
+
+        const turnRate = p.wheelAngle * (p.speed / MAX_SPEED_NORMAL) * 0.1 / gripModifier;
         p.angle += turnRate;
 
         // Auto-correct angle slightly towards road direction
@@ -343,6 +366,7 @@ export function RaceScreen({
       p.collision = true;
       const sparkSide = p.y < roadCenterY ? -1 : 1;
       p.y = roadCenterY + (sparkSide * (ROAD_WIDTH / 2 - carHalfHeight));
+      p.tyreTemp += 2;
       if (!assistEnabled) {
           p.angle *= -0.5; // Bounce off wall
       }
@@ -367,6 +391,7 @@ export function RaceScreen({
             if (racerA === p) {
                 p.speed *= 0.9;
                 p.collision = true;
+                p.tyreTemp += 5;
                 createSparks(p.x - dx/2, p.y - dy/2, 15);
             } else {
                 (racerA.speed as number) *= 0.95;
@@ -374,6 +399,7 @@ export function RaceScreen({
              if (racerB === p) {
                 p.speed *= 0.9;
                 p.collision = true;
+                p.tyreTemp += 5;
                 createSparks(p.x - dx/2, p.y - dy/2, 15);
             } else {
                 (racerB.speed as number) *= 0.95;
@@ -499,13 +525,20 @@ export function RaceScreen({
     };
   }, [loop, quitRace, triggerRaceEngineer, drsState]);
 
+  const getTyreTempColor = (temp: number) => {
+    if (temp > 105) return 'bg-red-600';
+    if (temp > 85) return 'bg-yellow-400';
+    if (temp > 50) return 'bg-green-500';
+    return 'bg-blue-400';
+  }
+
   return (
     <div className="h-screen w-full bg-background overflow-hidden relative select-none cursor-none">
       <canvas ref={canvasRef} width={windowSize.width} height={windowSize.height} className="block" />
 
       {/* HUD */}
       <div className="absolute top-0 left-0 right-0 p-4 sm:p-6 flex justify-between items-start pointer-events-none">
-        {/* Speed & DRS */}
+        {/* Speed, DRS, Tyres */}
         <div className="flex flex-col gap-2">
           <div className="bg-card/80 backdrop-blur text-white p-4 sm:p-6 rounded-br-3xl border-l-8 border-accent min-w-[200px] sm:min-w-[240px]">
             <div className="font-black italic leading-none tracking-tighter text-5xl sm:text-7xl font-headline">
@@ -519,7 +552,15 @@ export function RaceScreen({
             </div>
             <Zap size={16} className={drsState.active ? 'text-yellow-400 fill-yellow-400 animate-pulse' : 'text-muted-foreground/50'} />
           </div>
+          <div className="bg-card/80 p-3 rounded-r-xl flex items-center gap-3 w-56 sm:w-72 backdrop-blur">
+            <div className={`font-bold text-xs px-2 py-1 rounded bg-muted-foreground/20 text-muted-foreground`}><Thermometer size={12}/></div>
+            <div className="flex-1 h-2 bg-muted rounded-full overflow-hidden">
+              <div className={`h-full transition-all duration-200 ${getTyreTempColor(phys.current.tyreTemp)}`} style={{ width: `${(phys.current.tyreTemp - 20)}%` }}></div>
+            </div>
+            <span className="text-xs font-mono w-10 text-right">{Math.round(phys.current.tyreTemp)}°C</span>
+          </div>
         </div>
+
 
         {/* Laps */}
         <div className="bg-card/80 backdrop-blur text-white px-6 sm:px-10 py-4 rounded-b-3xl flex flex-col items-center border-b-4 border-accent shadow-lg shadow-accent/10">
