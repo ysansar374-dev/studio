@@ -4,16 +4,15 @@ import type { FirebaseOptions } from 'firebase/app';
 // This function now directly uses environment variables that Next.js will replace at build time.
 // This is compatible with deployment platforms like Netlify.
 const getFirebaseConfig = (): { config: FirebaseOptions | null, appId: string | null } => {
-  // IMPORTANT: Replace the placeholder values below with your actual Firebase project configuration.
-  // You can find these details in your Firebase project settings.
+  // IMPORTANT: These values are now hardcoded from your Firebase project configuration.
   const config = {
-    apiKey: "YOUR_API_KEY",
-    authDomain: "YOUR_AUTH_DOMAIN",
-    projectId: "YOUR_PROJECT_ID",
-    storageBucket: "YOUR_STORAGE_BUCKET",
-    messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
-    appId: "YOUR_APP_ID",
-  };
+      apiKey: "AIzaSyC2sWHR0mEkf3sKDPb3j5qWuQhyMFG8hSY",
+      authDomain: "coffee-spark-ai-barista-3f318.firebaseapp.com",
+      projectId: "coffee-spark-ai-barista-3f318",
+      storageBucket: "coffee-spark-ai-barista-3f318.appspot.com",
+      messagingSenderId: "324973813553",
+      appId: "1:324973813553:web:558cc71df1c65fa0f5da10"
+    };
 
   // Check if all required environment variables are present and not placeholders.
   const placeholderKeys = Object.entries(config)
