@@ -24,6 +24,7 @@ export default function VelocityLobbyClient() {
   const [connectionStatus, setConnectionStatus] = useState('connecting');
   const { toast } = useToast();
   const config = useFirebaseConfig();
+  const configErrorToastShown = useRef(false);
 
   // Player & Car State
   const [playerCar, setPlayerCar] = useState<PlayerCar>({
@@ -88,7 +89,7 @@ export default function VelocityLobbyClient() {
     if (!db || !config.appId) return null;
     return doc(db, 'artifacts', config.appId, 'public', 'data', 'lobbies', lobbyCode, 'players', playerId);
   }, [config.appId, getFirebase]);
-
+  
   const startRaceSequence = useCallback((laps: number) => {
     setLapInfo({ current: 1, total: laps, finished: false });
     setGameState('race');
@@ -96,10 +97,13 @@ export default function VelocityLobbyClient() {
 
   // --- Initialization ---
   useEffect(() => {
+    if (!config.checked) return;
+
     if (!config.config) {
-      if (config.checked) { // only show error if we've checked and it's null
-        setConnectionStatus('error');
+      setConnectionStatus('error');
+      if (!configErrorToastShown.current) {
         toast({ variant: 'destructive', title: 'Firebase Yapılandırması Eksik', description: 'Uygulama başlatılamadı. Ortam değişkenleri ayarlanmamış.' });
+        configErrorToastShown.current = true;
       }
       return;
     }
@@ -108,7 +112,10 @@ export default function VelocityLobbyClient() {
 
     if (!auth) {
       setConnectionStatus('error');
-      toast({ variant: 'destructive', title: 'Firebase Kimlik Doğrulama Başlatılamadı', description: 'Uygulama başlatılamadı.' });
+      if (!configErrorToastShown.current) {
+        toast({ variant: 'destructive', title: 'Firebase Kimlik Doğrulama Başlatılamadı', description: 'Uygulama başlatılamadı.' });
+        configErrorToastShown.current = true;
+      }
       return;
     }
 
@@ -128,7 +135,10 @@ export default function VelocityLobbyClient() {
       } catch (error) {
         console.error("Auth Error:", error);
         setConnectionStatus('error');
-        toast({ variant: 'destructive', title: 'Kimlik Doğrulama Hatası', description: 'Sunucuya bağlanılamadı.' });
+        if (!configErrorToastShown.current) {
+          toast({ variant: 'destructive', title: 'Kimlik Doğrulama Hatası', description: 'Sunucuya bağlanılamadı.' });
+          configErrorToastShown.current = true;
+        }
       }
     };
 
@@ -430,7 +440,9 @@ export default function VelocityLobbyClient() {
     return (
       <div className="h-screen w-full bg-background flex items-center justify-center">
         <Loader2 className="h-16 w-16 text-accent animate-spin" />
-        <p className="text-muted-foreground ml-4">Yükleniyor...</p>
+        <div className="ml-4 text-muted-foreground">
+          {connectionStatus === 'error' ? 'Bağlantı Hatası. Yapılandırmayı kontrol edin.' : 'Yükleniyor...'}
+        </div>
       </div>
     );
   }
