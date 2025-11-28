@@ -441,7 +441,7 @@ export default function VelocityLobbyClient() {
       <div className="h-screen w-full bg-background flex items-center justify-center">
         <Loader2 className="h-16 w-16 text-accent animate-spin" />
         <div className="ml-4 text-muted-foreground">
-          {connectionStatus === 'error' ? 'Bağlantı Hatası. Yapılandırmayı kontrol edin.' : 'Yükleniyor...'}
+          {connectionStatus === 'error' ? 'Bağlantı Hatası. Firebase yapılandırmasını kontrol edin.' : 'Yükleniyor...'}
         </div>
       </div>
     );
