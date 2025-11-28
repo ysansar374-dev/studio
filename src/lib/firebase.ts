@@ -15,14 +15,17 @@ const getFirebaseConfig = (): { config: FirebaseOptions | null, appId: string | 
     appId: "REPLACE_WITH_YOUR_APP_ID",
   };
 
-  // Check if all required environment variables are present.
-  if (Object.values(config).every(value => value && !value.startsWith("REPLACE_WITH"))) {
-    return { config: config as FirebaseOptions, appId: config.projectId! };
+  // Check if all required environment variables are present and not placeholders.
+  const placeholderKeys = Object.entries(config)
+    .filter(([key, value]) => !value || value.startsWith("REPLACE_WITH"))
+    .map(([key]) => key);
+
+  if (placeholderKeys.length > 0) {
+    console.error(`Firebase configuration is incomplete. Please replace the placeholder values in src/lib/firebase.ts for the following keys: ${placeholderKeys.join(', ')}`);
+    return { config: null, appId: null };
   }
 
-  // If the config values are still placeholders, return null to indicate an error.
-  console.error("Firebase configuration is not set. Please replace the placeholder values in src/lib/firebase.ts.");
-  return { config: null, appId: null };
+  return { config: config as FirebaseOptions, appId: config.projectId! };
 };
 
 
