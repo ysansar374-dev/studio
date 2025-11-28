@@ -40,7 +40,7 @@ export function RaceScreen({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const requestRef = useRef<number>();
   const gameActive = useRef(true);
-  const phys = useRef({ x: 0, y: BASE_ROAD_Y, speed: 0, collision: false, wheelAngle: 0, angle: 0 });
+  const phys = useRef({ x: 0, y: BASE_ROAD_Y, speed: 0, collision: false, wheelAngle: 0, wheelRotation: 0, angle: 0 });
   const inputs = useRef({ gas: false, brake: false, left: false, right: false, drs: false });
   const botsRef = useRef<Player[]>([]);
   const lastSync = useRef(0);
@@ -104,7 +104,7 @@ export function RaceScreen({
 
         ctx.strokeStyle = '#4a4a4a';
         ctx.lineWidth = 1;
-        const spokeRotation = phys.current.wheelAngle; // Use global wheel angle for rotation illusion
+        const spokeRotation = phys.current.wheelRotation;
         ctx.rotate(spokeRotation);
         
         ctx.beginPath(); ctx.moveTo(0, -height/2); ctx.lineTo(0, height/2); ctx.stroke();
@@ -129,7 +129,7 @@ export function RaceScreen({
     ctx.fillStyle = 'white'; ctx.font = 'bold 12px sans-serif'; ctx.textAlign = 'center';
     ctx.shadowColor = 'black'; ctx.shadowBlur = 4; ctx.fillText(name, 0, -40); ctx.shadowBlur = 0;
     ctx.restore();
-  }, [phys.current.wheelAngle]);
+  }, []);
 
   const drawCheckeredLine = (ctx: CanvasRenderingContext2D, x: number, y: number, height: number) => {
     const size = 20;
@@ -255,12 +255,12 @@ export function RaceScreen({
 
     // Draw bots
     botsRef.current.forEach(bot => {
-      drawCar(ctx, bot.x || 0, bot.y || 0, bot.color, bot.name, false, false, phys.current.wheelAngle, 0);
+      drawCar(ctx, bot.x || 0, bot.y || 0, bot.color, bot.name, false, false, 0, 0);
     });
 
     // Draw opponents
     Object.values(opponents).forEach(o => {
-      drawCar(ctx, o.x || 0, o.y || 0, o.color, o.name, false, false, phys.current.wheelAngle, 0);
+      drawCar(ctx, o.x || 0, o.y || 0, o.color, o.name, false, false, 0, 0);
     });
 
     // Draw player
@@ -333,7 +333,7 @@ export function RaceScreen({
       p.x += p.speed;
     }
     
-    phys.current.wheelAngle += p.speed * 0.05; // For visual wheel rotation
+    phys.current.wheelRotation += p.speed * 0.05; // For visual wheel rotation
 
     // --- Collision Logic ---
     p.collision = false;
