@@ -4,23 +4,24 @@ import type { FirebaseOptions } from 'firebase/app';
 // This function now directly uses environment variables that Next.js will replace at build time.
 // This is compatible with deployment platforms like Netlify.
 const getFirebaseConfig = (): { config: FirebaseOptions | null, appId: string | null } => {
+  // IMPORTANT: Replace the placeholder values below with your actual Firebase project configuration.
+  // You can find these details in your Firebase project settings.
   const config = {
-    apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
-    authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
-    projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
-    storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
-    messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
-    appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
+    apiKey: "REPLACE_WITH_YOUR_API_KEY",
+    authDomain: "REPLACE_WITH_YOUR_AUTH_DOMAIN",
+    projectId: "REPLACE_WITH_YOUR_PROJECT_ID",
+    storageBucket: "REPLACE_WITH_YOUR_STORAGE_BUCKET",
+    messagingSenderId: "REPLACE_WITH_YOUR_MESSAGING_SENDER_ID",
+    appId: "REPLACE_WITH_YOUR_APP_ID",
   };
 
   // Check if all required environment variables are present.
-  if (Object.values(config).every(value => value)) {
+  if (Object.values(config).every(value => value && !value.startsWith("REPLACE_WITH"))) {
     return { config: config as FirebaseOptions, appId: config.projectId! };
   }
 
-  // In a production/deployment environment, we should not use fallbacks.
-  // If env variables are missing, it's a configuration error.
-  console.error("Firebase environment variables are not set. Please check your Netlify deployment configuration.");
+  // If the config values are still placeholders, return null to indicate an error.
+  console.error("Firebase configuration is not set. Please replace the placeholder values in src/lib/firebase.ts.");
   return { config: null, appId: null };
 };
 
