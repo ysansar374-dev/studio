@@ -71,16 +71,16 @@ export default function VelocityLobbyClient() {
     return { app: null, auth: null, db: null };
   }, [config.config]);
 
-  const getLobbyDocRef = useCallback((code: string) => {
-    const { db } = getFirebase();
-    if (!db || !config.appId) return null;
-    return doc(db, 'artifacts', config.appId, 'public', 'data', 'lobbies', code);
-  }, [config.appId, getFirebase]);
-
   const getLobbiesCollectionRef = useCallback(() => {
     const { db } = getFirebase();
     if (!db || !config.appId) return null;
     return collection(db, 'artifacts', config.appId, 'public', 'data', 'lobbies');
+  }, [config.appId, getFirebase]);
+  
+  const getLobbyDocRef = useCallback((code: string) => {
+    const { db } = getFirebase();
+    if (!db || !config.appId) return null;
+    return doc(db, 'artifacts', config.appId, 'public', 'data', 'lobbies', code);
   }, [config.appId, getFirebase]);
 
   const getPlayerDocRef = useCallback((lobbyCode: string, playerId: string) => {
@@ -97,8 +97,10 @@ export default function VelocityLobbyClient() {
   // --- Initialization ---
   useEffect(() => {
     if (!config.config) {
-      setConnectionStatus('error');
-      toast({ variant: 'destructive', title: 'Firebase Yapılandırması Eksik', description: 'Uygulama başlatılamadı.' });
+      if (config.checked) { // only show error if we've checked and it's null
+        setConnectionStatus('error');
+        toast({ variant: 'destructive', title: 'Firebase Yapılandırması Eksik', description: 'Uygulama başlatılamadı. Ortam değişkenleri ayarlanmamış.' });
+      }
       return;
     }
 
@@ -344,7 +346,6 @@ export default function VelocityLobbyClient() {
     }
   }, [gameState, refreshLobbies]);
 
-
   const handleAdminLogin = useCallback(() => {
     if (isAdmin) {
       toast({ title: "Admin çıkışı yapıldı." });
@@ -367,7 +368,6 @@ export default function VelocityLobbyClient() {
     await deleteDoc(playerRef);
     toast({ title: "Oyuncu Atıldı", description: `Oyuncu ${playerId} lobiden atıldı.` })
   }, [isAdmin, lobbyCode, getPlayerDocRef, toast]);
-
 
   const resetDatabase = useCallback(async () => {
     const { db } = getFirebase();
@@ -426,7 +426,7 @@ export default function VelocityLobbyClient() {
 
 
   // --- Render ---
-  if (!config.config || connectionStatus === 'connecting' || !user) {
+  if (!config.checked || connectionStatus === 'connecting' || !user) {
     return (
       <div className="h-screen w-full bg-background flex items-center justify-center">
         <Loader2 className="h-16 w-16 text-accent animate-spin" />

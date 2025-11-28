@@ -26,12 +26,13 @@ const getFirebaseConfig = (): { config: FirebaseOptions | null, appId: string | 
 
 
 export const useFirebaseConfig = () => {
-  const [config, setConfig] = useState<{ config: FirebaseOptions | null, appId: string | null }>({ config: null, appId: null });
+  const [config, setConfig] = useState<{ config: FirebaseOptions | null, appId: string | null, checked: boolean }>({ config: null, appId: null, checked: false });
 
   useEffect(() => {
     // getFirebaseConfig needs to run on the client side after hydration
     // to access the process.env variables injected by Next.js.
-    setConfig(getFirebaseConfig());
+    const resolvedConfig = getFirebaseConfig();
+    setConfig({ ...resolvedConfig, checked: true });
   }, []);
 
   return config;
