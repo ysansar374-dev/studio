@@ -60,7 +60,8 @@ export function MenuScreen({ playerCar, setPlayerCar, aiLoading, generateTeamNam
   const connectionColor = connectionStatus === 'connected' ? 'text-green-400' : connectionStatus === 'error' ? 'text-red-500' : 'text-yellow-400';
 
   return (
-    <div className="h-screen bg-background flex items-center justify-center text-foreground font-sans p-4">
+    <div className="h-screen bg-background flex items-center justify-center text-foreground font-sans p-4 relative">
+      <div className="absolute top-4 text-center w-full font-bold text-2xl text-accent/50 font-headline tracking-widest pointer-events-none">lezziya</div>
       <div className="bg-card/80 backdrop-blur-md p-8 sm:p-10 rounded-2xl shadow-2xl max-w-7xl w-full border grid grid-cols-1 lg:grid-cols-3 gap-12">
         <div className="lg:col-span-1">
           <h1 className="text-5xl sm:text-6xl font-black text-transparent bg-clip-text bg-gradient-to-r from-primary to-accent italic tracking-tighter mb-2 font-headline">VELOCITY LOBBY</h1>
@@ -193,5 +194,3 @@ export function MenuScreen({ playerCar, setPlayerCar, aiLoading, generateTeamNam
     </div>
   );
 }
-
-    
