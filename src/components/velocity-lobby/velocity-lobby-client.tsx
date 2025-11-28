@@ -302,7 +302,7 @@ export default function VelocityLobbyClient() {
     await updateDoc(lobbyDocRef, { status: 'started' });
   };
 
-  const handleAdminLogin = () => {
+  const handleAdminLogin = useCallback(() => {
     if (isAdmin) {
       toast({ title: "Admin çıkışı yapıldı." });
       setIsAdmin(false);
@@ -315,15 +315,16 @@ export default function VelocityLobbyClient() {
     } else if (pass) {
       toast({ variant: 'destructive', title: "Şifre yanlış!", description: "Admin girişi başarısız." });
     }
-  };
+  }, [isAdmin, toast]);
 
-  const kickPlayer = async (playerId: string) => {
+  const kickPlayer = useCallback(async (playerId: string) => {
     if (!isAdmin || !lobbyCode) return;
     const playerRef = getPlayerDocRef(lobbyCode, playerId);
     if (!playerRef) return;
     await deleteDoc(playerRef);
     toast({ title: "Oyuncu Atıldı", description: `Oyuncu ${playerId} lobiden atıldı.` })
-  };
+  }, [isAdmin, lobbyCode, getPlayerDocRef, toast]);
+
 
   const resetDatabase = useCallback(async () => {
     const { db } = getFirebase();
