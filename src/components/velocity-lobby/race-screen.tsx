@@ -23,6 +23,12 @@ type RaceScreenProps = {
   onRaceFinish: (leaderboard: Player[]) => void;
 };
 
+type RaceStatus = 'countdown' | 'racing' | 'finished';
+
+const CountdownLight = ({ active }: { active: boolean }) => (
+    <div className={`w-16 h-16 sm:w-24 sm:h-24 rounded-full border-4 border-black transition-colors duration-200 ${active ? 'bg-red-600 shadow-[0_0_30px_10px_rgba(255,0,0,0.7)]' : 'bg-neutral-800'}`}></div>
+);
+
 export function RaceScreen({
   playerCar,
   opponents,
@@ -49,14 +55,41 @@ export function RaceScreen({
   const uiUpdateTimer = useRef(0);
   const sparks = useRef<any[]>([]);
   const lapInfoRef = useRef(lapInfo);
+  const opponentsRef = useRef<Record<string, Opponent>>(opponents);
 
   const [drsState, setDrsState] = useState({ active: false, charge: 100 });
   const [leaderboardData, setLeaderboardData] = useState<Player[]>([]);
   const [windowSize, setWindowSize] = useState({ width: 1920, height: 1080 });
   
+  const [raceStatus, setRaceStatus] = useState<RaceStatus>('countdown');
+  const [countdownState, setCountdownState] = useState({ lights: [false, false, false, false, false], text: '' });
+  
   useEffect(() => {
     lapInfoRef.current = lapInfo;
   }, [lapInfo]);
+
+   useEffect(() => {
+    opponentsRef.current = opponents;
+  }, [opponents]);
+
+  // Interpolation logic for opponents
+   const interpolatedOpponents = useRef<Record<string, { current: Opponent, target: Opponent }>>({});
+   useEffect(() => {
+       for (const id in opponents) {
+           if (!interpolatedOpponents.current[id]) {
+               interpolatedOpponents.current[id] = { current: opponents[id], target: opponents[id] };
+           } else {
+               interpolatedOpponents.current[id].target = opponents[id];
+           }
+       }
+       // Clean up opponents who have left
+       for (const id in interpolatedOpponents.current) {
+           if (!opponents[id]) {
+               delete interpolatedOpponents.current[id];
+           }
+       }
+   }, [opponents]);
+
 
   const getRoadCurve = useCallback((x: number) => {
     const val = x || 0;
@@ -170,7 +203,7 @@ export function RaceScreen({
     };
 
     botsRef.current.forEach(b => drawDot(b.x || 0, '#d1d5db', 3, false));
-    Object.values(opponents).forEach(o => drawDot(o.x || 0, o.color, 4, true));
+    Object.values(interpolatedOpponents.current).forEach(o => drawDot(o.current.x || 0, o.current.color, 4, true));
     drawDot(phys.current.x, playerCar.color, 6, true);
     ctx.restore();
   };
@@ -260,9 +293,9 @@ export function RaceScreen({
       drawCar(ctx, bot.x || 0, bot.y || 0, bot.color, bot.name, false, false, 0, 0);
     });
 
-    // Draw opponents
-    Object.values(opponents).forEach(o => {
-      drawCar(ctx, o.x || 0, o.y || 0, o.color, o.name, false, false, 0, 0);
+    // Draw opponents (interpolated)
+     Object.values(interpolatedOpponents.current).forEach(o => {
+      drawCar(ctx, o.current.x || 0, o.current.y || 0, o.current.color, o.current.name, false, false, 0, 0);
     });
 
     // Draw player
@@ -274,7 +307,7 @@ export function RaceScreen({
     ctx.restore();
     
     drawMiniMap(ctx, screenW, screenH);
-  }, [getRoadCurve, drawCar, drawSparks, opponents, playerCar.color, playerCar.name, drsState.active]);
+  }, [getRoadCurve, drawCar, drawSparks, playerCar.color, playerCar.name, drsState.active]);
 
 
   const loop = useCallback((time: number) => {
@@ -283,185 +316,201 @@ export function RaceScreen({
     const p = phys.current;
     const i = inputs.current;
     
-    let currentDrsActive = false;
-    
-    setDrsState(prev => {
-        if (i.drs && prev.charge > 0) {
-            currentDrsActive = true;
-            return { active: true, charge: Math.max(0, prev.charge - 0.5) };
-        } else {
-             return { active: false, charge: Math.min(100, prev.charge + 0.1) };
-        }
-    });
-
-    const currentMaxSpeed = currentDrsActive ? MAX_SPEED_DRS : MAX_SPEED_NORMAL;
-
-    let dynamicAccel = ACCELERATION;
-    const currentSpeedKmh = p.speed * 10;
-    
-    if (currentSpeedKmh > 290) {
-        dynamicAccel = ACCELERATION * 0.1;
-    } else if (currentSpeedKmh > 220) {
-        dynamicAccel = ACCELERATION * 0.3;
-    }
-
-    const currentAccel = currentDrsActive ? dynamicAccel * 1.5 : dynamicAccel;
-
-    if (i.gas) p.speed += currentAccel;
-    else p.speed *= FRICTION_ROAD;
-    if (i.brake) {
-        p.speed -= ACCELERATION * 3;
-        p.tyreTemp += 0.2; // Braking heats tyres
-    }
-    
-    p.speed = Math.max(0, Math.min(p.speed, currentMaxSpeed));
-
-    // Tyre Temp
-    p.tyreTemp += (p.speed / MAX_SPEED_NORMAL) * 0.05; // Heat from speed
-    p.tyreTemp -= 0.08; // Cooling
-    p.tyreTemp = Math.max(20, Math.min(p.tyreTemp, 120));
-
-
-    // --- Steering Logic ---
-    const roadCenterY = getRoadCurve(p.x);
-    const carHalfHeight = 20;
-    
-    const gripModifier = p.tyreTemp > 95 ? 1 + (p.tyreTemp - 95) * 0.08 : 1; // Reduced grip when hot
-    
-    if(assistEnabled) {
-        // ASSISTED STEERING (Lane-based)
-        p.y += (i.right ? LANE_SPEED : 0) + (i.left ? -LANE_SPEED : 0);
-        const roadSlope = (getRoadCurve(p.x + 1) - roadCenterY);
-        p.angle = roadSlope * 0.5; // Visual tilt
-        p.wheelAngle = 0; // Wheels straight in assist mode
-    } else {
-        // MANUAL STEERING (Realistic)
-        let steeringInput = 0;
-        if(i.left) steeringInput = -1;
-        if(i.right) steeringInput = 1;
-
-        p.wheelAngle = steeringInput * STEERING_SENSITIVITY;
-        p.tyreTemp += Math.abs(steeringInput * p.speed * 0.005); // Heat from steering
-
-        const turnRate = p.wheelAngle * (p.speed / MAX_SPEED_NORMAL) * 0.1 / gripModifier;
-        p.angle += turnRate;
-
-        // Auto-correct angle slightly towards road direction
-        const roadSlope = (getRoadCurve(p.x + 1) - roadCenterY);
-        p.angle += (roadSlope - p.angle) * STEERING_ASSIST_STRENGTH;
-
-        p.x += p.speed * Math.cos(p.angle);
-        p.y += p.speed * Math.sin(p.angle);
-    }
-    
-    if (assistEnabled) { // Only apply x-speed in assist mode
-      p.x += p.speed;
-    }
-    
-    phys.current.wheelRotation += p.speed * 0.05; // For visual wheel rotation
-
-    // --- Collision Logic ---
-    p.collision = false;
-
-    if (p.y < roadCenterY - ROAD_WIDTH / 2 + carHalfHeight || p.y > roadCenterY + ROAD_WIDTH / 2 - carHalfHeight) {
-      p.speed *= WALL_BOUNCE;
-      p.collision = true;
-      const sparkSide = p.y < roadCenterY ? -1 : 1;
-      p.y = roadCenterY + (sparkSide * (ROAD_WIDTH / 2 - carHalfHeight));
-      p.tyreTemp += 2;
-      if (!assistEnabled) {
-          p.angle *= -0.5; // Bounce off wall
-      }
-      createSparks(p.x - 60, p.y + (sparkSide * 15), 10);
-    }
-    
-    const checkAndHandleCollision = (racerA: any, racerB: any) => {
-        if (!racerA.x || !racerA.y || !racerB.x || !racerB.y) return;
-        const dx = racerA.x - racerB.x;
-        const dy = racerA.y - racerB.y;
-        const distance = Math.sqrt(dx * dx + dy * dy);
-        if (distance < 80) {
-            const overlap = (80 - distance) / 2;
-            const pushX = (dx / distance) * overlap;
-            const pushY = (dy / distance) * overlap;
-            
-            racerA.x += pushX;
-            racerA.y += pushY;
-            racerB.x -= pushX;
-            racerB.y -= pushY;
-
-            if (racerA === p) {
-                p.speed *= 0.9;
-                p.collision = true;
-                p.tyreTemp += 5;
-                createSparks(p.x - dx/2, p.y - dy/2, 15);
-            } else {
-                (racerA.speed as number) *= 0.95;
-            }
-             if (racerB === p) {
-                p.speed *= 0.9;
-                p.collision = true;
-                p.tyreTemp += 5;
-                createSparks(p.x - dx/2, p.y - dy/2, 15);
-            } else {
-                (racerB.speed as number) *= 0.95;
-            }
-        }
-    }
-
-    botsRef.current.forEach(bot => checkAndHandleCollision(p, bot));
-    Object.values(opponents).forEach(opp => checkAndHandleCollision(p, opp));
-
-
-    setLapInfo(prev => {
-      if (!gameActive.current) return prev;
-      const newLap = Math.floor(p.x / TRACK_LENGTH) + 1;
-      if (newLap > prev.current) {
-        if (newLap > prev.total) {
-          if (!prev.finished) {
-            const finalLeaderboard = [
-                ...Object.values(opponents),
-                ...botsRef.current,
-                { name: playerCar.name, x: phys.current.x, isMe: true, id: 'player', color: playerCar.color, team: playerCar.team, ready: true }
-            ].sort((a, b) => (b.x || 0) - (a.x || 0));
-            onRaceFinish(finalLeaderboard as Player[]);
-            gameActive.current = false;
+    if (raceStatus === 'racing') {
+      let currentDrsActive = false;
+      
+      setDrsState(prev => {
+          if (i.drs && prev.charge > 0) {
+              currentDrsActive = true;
+              return { active: true, charge: Math.max(0, prev.charge - 0.5) };
+          } else {
+              return { active: false, charge: Math.min(100, prev.charge + 0.1) };
           }
-          return { ...prev, finished: true };
-        } else {
-          return { ...prev, current: newLap };
-        }
+      });
+
+      const currentMaxSpeed = currentDrsActive ? MAX_SPEED_DRS : MAX_SPEED_NORMAL;
+
+      let dynamicAccel = ACCELERATION;
+      const currentSpeedKmh = p.speed * 10;
+      
+      if (currentSpeedKmh > 290) {
+          dynamicAccel = ACCELERATION * 0.1;
+      } else if (currentSpeedKmh > 220) {
+          dynamicAccel = ACCELERATION * 0.3;
       }
-      return prev;
-    });
-    
-    botsRef.current.forEach((bot, index) => {
-        const botSpeed = (bot as any).speed || 0;
-        const botX = bot.x || 0;
-        const botY = bot.y || 0;
-        const idealY = getRoadCurve(botX) + ((bot as any).offsetY || 0);
 
-        bot.y = botY + (idealY - botY) * 0.05;
-        bot.x = botX + botSpeed;
+      const currentAccel = currentDrsActive ? dynamicAccel * 1.5 : dynamicAccel;
 
-        if (Math.random() < 0.005) {
-             (bot as any).offsetY = (Math.random() - 0.5) * (ROAD_WIDTH - 60);
-        }
-        
-        for(let j = index + 1; j < botsRef.current.length; j++) {
-            checkAndHandleCollision(bot, botsRef.current[j]);
-        }
+      if (i.gas) p.speed += currentAccel;
+      else p.speed *= FRICTION_ROAD;
+      if (i.brake) {
+          p.speed -= ACCELERATION * 3;
+          p.tyreTemp += 0.2; // Braking heats tyres
+      }
+      
+      p.speed = Math.max(0, Math.min(p.speed, currentMaxSpeed));
 
-        if (Math.abs(p.x - botX) > 4000) {
-            bot.x = p.x + (Math.random() > 0.5 ? 1 : -1) * (1000 + Math.random() * 500);
-            bot.y = getRoadCurve(bot.x);
+      // Tyre Temp
+      p.tyreTemp += (p.speed / MAX_SPEED_NORMAL) * 0.05; // Heat from speed
+      p.tyreTemp -= 0.08; // Cooling
+      p.tyreTemp = Math.max(20, Math.min(p.tyreTemp, 120));
+
+
+      // --- Steering Logic ---
+      const roadCenterY = getRoadCurve(p.x);
+      const carHalfHeight = 20;
+      
+      const gripModifier = p.tyreTemp > 95 ? 1 + (p.tyreTemp - 95) * 0.08 : 1; // Reduced grip when hot
+      
+      if(assistEnabled) {
+          // ASSISTED STEERING (Lane-based)
+          p.y += (i.right ? LANE_SPEED : 0) + (i.left ? -LANE_SPEED : 0);
+          const roadSlope = (getRoadCurve(p.x + 1) - roadCenterY);
+          p.angle = roadSlope * 0.5; // Visual tilt
+          p.wheelAngle = 0; // Wheels straight in assist mode
+      } else {
+          // MANUAL STEERING (Realistic)
+          let steeringInput = 0;
+          if(i.left) steeringInput = -1;
+          if(i.right) steeringInput = 1;
+
+          p.wheelAngle = steeringInput * STEERING_SENSITIVITY;
+          p.tyreTemp += Math.abs(steeringInput * p.speed * 0.005); // Heat from steering
+
+          const turnRate = p.wheelAngle * (p.speed / MAX_SPEED_NORMAL) * 0.1 / gripModifier;
+          p.angle += turnRate;
+
+          // Auto-correct angle slightly towards road direction
+          const roadSlope = (getRoadCurve(p.x + 1) - roadCenterY);
+          p.angle += (roadSlope - p.angle) * STEERING_ASSIST_STRENGTH;
+
+          p.x += p.speed * Math.cos(p.angle);
+          p.y += p.speed * Math.sin(p.angle);
+      }
+      
+      if (assistEnabled) { // Only apply x-speed in assist mode
+        p.x += p.speed;
+      }
+      
+      phys.current.wheelRotation += p.speed * 0.05; // For visual wheel rotation
+
+      // --- Collision Logic ---
+      p.collision = false;
+
+      if (p.y < roadCenterY - ROAD_WIDTH / 2 + carHalfHeight || p.y > roadCenterY + ROAD_WIDTH / 2 - carHalfHeight) {
+        p.speed *= WALL_BOUNCE;
+        p.collision = true;
+        const sparkSide = p.y < roadCenterY ? -1 : 1;
+        p.y = roadCenterY + (sparkSide * (ROAD_WIDTH / 2 - carHalfHeight));
+        p.tyreTemp += 2;
+        if (!assistEnabled) {
+            p.angle *= -0.5; // Bounce off wall
         }
-    });
+        createSparks(p.x - 60, p.y + (sparkSide * 15), 10);
+      }
+      
+      const checkAndHandleCollision = (racerA: any, racerB: any) => {
+          if (!racerA.x || !racerA.y || !racerB.x || !racerB.y) return;
+          const dx = racerA.x - racerB.x;
+          const dy = racerA.y - racerB.y;
+          const distance = Math.sqrt(dx * dx + dy * dy);
+          if (distance < 80) {
+              const overlap = (80 - distance) / 2;
+              const pushX = (dx / distance) * overlap;
+              const pushY = (dy / distance) * overlap;
+              
+              racerA.x += pushX;
+              racerA.y += pushY;
+              racerB.x -= pushX;
+              racerB.y -= pushY;
+
+              if (racerA === p) {
+                  p.speed *= 0.9;
+                  p.collision = true;
+                  p.tyreTemp += 5;
+                  createSparks(p.x - dx/2, p.y - dy/2, 15);
+              } else {
+                  (racerA.speed as number) *= 0.95;
+              }
+              if (racerB === p) {
+                  p.speed *= 0.9;
+                  p.collision = true;
+                  p.tyreTemp += 5;
+                  createSparks(p.x - dx/2, p.y - dy/2, 15);
+              } else {
+                  (racerB.speed as number) *= 0.95;
+              }
+          }
+      }
+
+      botsRef.current.forEach(bot => checkAndHandleCollision(p, bot));
+      Object.values(interpolatedOpponents.current).forEach(opp => checkAndHandleCollision(p, opp.current));
+      
+       // --- Interpolate opponent positions ---
+       const lerpFactor = 0.2; // Adjust for smoothness
+       for (const id in interpolatedOpponents.current) {
+           const ipo = interpolatedOpponents.current[id];
+           if (ipo.current.x !== undefined && ipo.target.x !== undefined) {
+               ipo.current.x += (ipo.target.x - ipo.current.x) * lerpFactor;
+           }
+            if (ipo.current.y !== undefined && ipo.target.y !== undefined) {
+               ipo.current.y += (ipo.target.y - ipo.current.y) * lerpFactor;
+           }
+       }
+
+
+      setLapInfo(prev => {
+        if (!gameActive.current || raceStatus !== 'racing') return prev;
+        const newLap = Math.floor(p.x / TRACK_LENGTH) + 1;
+        if (newLap > prev.current) {
+          if (newLap > prev.total) {
+            if (!prev.finished) {
+              setRaceStatus('finished');
+              const finalLeaderboard = [
+                  ...Object.values(opponentsRef.current),
+                  ...botsRef.current,
+                  { name: playerCar.name, x: phys.current.x, isMe: true, id: 'player', color: playerCar.color, team: playerCar.team, ready: true }
+              ].sort((a, b) => (b.x || 0) - (a.x || 0));
+              onRaceFinish(finalLeaderboard as Player[]);
+              gameActive.current = false;
+            }
+            return { ...prev, finished: true };
+          } else {
+            return { ...prev, current: newLap };
+          }
+        }
+        return prev;
+      });
+      
+      botsRef.current.forEach((bot, index) => {
+          const botSpeed = (bot as any).speed || 0;
+          const botX = bot.x || 0;
+          const botY = bot.y || 0;
+          const idealY = getRoadCurve(botX) + ((bot as any).offsetY || 0);
+
+          bot.y = botY + (idealY - botY) * 0.05;
+          bot.x = botX + botSpeed;
+
+          if (Math.random() < 0.005) {
+              (bot as any).offsetY = (Math.random() - 0.5) * (ROAD_WIDTH - 60);
+          }
+          
+          for(let j = index + 1; j < botsRef.current.length; j++) {
+              checkAndHandleCollision(bot, botsRef.current[j]);
+          }
+
+          if (Math.abs(p.x - botX) > 4000) {
+              bot.x = p.x + (Math.random() > 0.5 ? 1 : -1) * (1000 + Math.random() * 500);
+              bot.y = getRoadCurve(bot.x);
+          }
+      });
+    }
+
 
     uiUpdateTimer.current++;
     if (uiUpdateTimer.current % 10 === 0) {
         const allRacers = [
-            ...Object.values(opponents),
+            ...Object.values(interpolatedOpponents.current).map(o => o.current),
             ...botsRef.current,
             { name: playerCar.name, x: phys.current.x, isMe: true, id: 'player' }
         ].sort((a, b) => (b.x || 0) - (a.x || 0));
@@ -475,7 +524,7 @@ export function RaceScreen({
     
     draw();
     requestRef.current = requestAnimationFrame(loop);
-  }, [draw, getRoadCurve, playerCar, opponents, setLapInfo, syncMultiplayer, assistEnabled, onRaceFinish]);
+  }, [draw, getRoadCurve, playerCar, setLapInfo, syncMultiplayer, assistEnabled, onRaceFinish, raceStatus]);
 
 
   const addBot = () => {
@@ -494,12 +543,41 @@ export function RaceScreen({
     botsRef.current.push(newBot as Player);
   };
   
+   useEffect(() => {
+    const handleCountdown = () => {
+        if (raceStatus !== 'countdown') return;
+
+        const lightSequence = [
+            { t: 500, lights: [true, false, false, false, false], text: '' },
+            { t: 1500, lights: [true, true, false, false, false], text: '' },
+            { t: 2500, lights: [true, true, true, false, false], text: '' },
+            { t: 3500, lights: [true, true, true, true, false], text: '' },
+            { t: 4500, lights: [true, true, true, true, true], text: '' },
+            { t: 5500, lights: [false, false, false, false, false], text: 'YARIŞ BAŞLADI!' },
+            { t: 6500, lights: [false, false, false, false, false], text: '' },
+        ];
+
+        lightSequence.forEach(step => {
+            setTimeout(() => {
+                if (!gameActive.current) return;
+                setCountdownState({ lights: step.lights, text: step.text });
+                 if (step.t === 5500) {
+                    setRaceStatus('racing');
+                }
+            }, step.t);
+        });
+    };
+
+    handleCountdown();
+  }, [raceStatus]);
+
   useEffect(() => {
     const handleResize = () => setWindowSize({ width: window.innerWidth, height: window.innerHeight });
     window.addEventListener('resize', handleResize);
     handleResize();
 
     const hD = (e: KeyboardEvent) => {
+      if (raceStatus !== 'racing') return;
       const key = e.key.toLowerCase();
       if (key === 'w') inputs.current.gas = true;
       if (key === 's') inputs.current.brake = true;
@@ -530,7 +608,7 @@ export function RaceScreen({
       gameActive.current = false;
       if (requestRef.current) cancelAnimationFrame(requestRef.current);
     };
-  }, [loop, quitRace, triggerRaceEngineer, drsState]);
+  }, [loop, quitRace, triggerRaceEngineer, drsState, raceStatus]);
 
   const getTyreTempColor = (temp: number) => {
     if (temp > 105) return 'bg-red-600';
@@ -542,6 +620,25 @@ export function RaceScreen({
   return (
     <div className="h-screen w-full bg-background overflow-hidden relative select-none cursor-none">
       <canvas ref={canvasRef} width={windowSize.width} height={windowSize.height} className="block" />
+
+       {/* Countdown */}
+      {raceStatus === 'countdown' && (
+        <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/50 backdrop-blur-sm z-50 pointer-events-none">
+            <div className="flex gap-4 mb-8">
+                <CountdownLight active={countdownState.lights[0]} />
+                <CountdownLight active={countdownState.lights[1]} />
+                <CountdownLight active={countdownState.lights[2]} />
+                <CountdownLight active={countdownState.lights[3]} />
+                <CountdownLight active={countdownState.lights[4]} />
+            </div>
+             {countdownState.text && (
+                <div className="text-white font-black text-6xl sm:text-8xl italic tracking-tighter animate-pingOnce" style={{'--webkit-text-stroke': '2px black'} as React.CSSProperties}>
+                    {countdownState.text}
+                </div>
+            )}
+        </div>
+      )}
+
 
       {/* HUD */}
       <div className="absolute top-0 left-0 right-0 p-4 sm:p-6 flex justify-between items-start pointer-events-none">
@@ -616,10 +713,10 @@ export function RaceScreen({
       
       {/* Controls */}
       <div className="absolute bottom-6 right-6 flex gap-3 pointer-events-auto">
-         <button onClick={() => triggerRaceEngineer(phys.current, drsState, lapInfoRef.current)} disabled={radioLoading} className="bg-primary/80 hover:bg-primary text-white px-5 py-3 rounded-xl font-bold text-xs flex items-center gap-2 backdrop-blur border transition-all disabled:opacity-50 disabled:cursor-wait">
+         <button onClick={() => triggerRaceEngineer(phys.current, drsState, lapInfoRef.current)} disabled={radioLoading || raceStatus !== 'racing'} className="bg-primary/80 hover:bg-primary text-white px-5 py-3 rounded-xl font-bold text-xs flex items-center gap-2 backdrop-blur border transition-all disabled:opacity-50 disabled:cursor-wait">
             {radioLoading ? <Loader2 className="animate-spin" size={16} /> : <Radio size={16} />} TELSİZ (R)
          </button>
-         <button onClick={addBot} className="bg-secondary/80 hover:bg-secondary text-white px-5 py-3 rounded-xl font-bold text-xs flex items-center gap-2 backdrop-blur border transition-all"><Plus size={14} /> BOT EKLE</button>
+         <button onClick={addBot} disabled={raceStatus !== 'racing'} className="bg-secondary/80 hover:bg-secondary text-white px-5 py-3 rounded-xl font-bold text-xs flex items-center gap-2 backdrop-blur border transition-all disabled:opacity-50"><Plus size={14} /> BOT EKLE</button>
          <button onClick={quitRace} className="bg-destructive/80 hover:bg-destructive text-white px-5 py-3 rounded-xl font-bold text-xs flex items-center gap-2 backdrop-blur transition-all"><LogOut size={14} /> ÇIK</button>
       </div>
 
