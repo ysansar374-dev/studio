@@ -1,10 +1,11 @@
 'use client';
 
 import { useState } from "react";
-import { Check, Copy, User, Users, X } from "lucide-react";
+import { Check, Copy, User, Users, X, ChevronDown } from "lucide-react";
 import type { Player } from "@/types";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "../ui/dropdown-menu";
 
 type LobbyScreenProps = {
   lobbyCode: string;
@@ -15,11 +16,14 @@ type LobbyScreenProps = {
   startRaceByHost: () => void;
   quitRace: () => void;
   userId: string | null;
+  targetLaps: number;
+  setTargetLaps: (laps: number) => void;
 };
 
-export function LobbyScreen({ lobbyCode, lobbyPlayers, isHost, isAdmin, kickPlayer, startRaceByHost, quitRace, userId }: LobbyScreenProps) {
+export function LobbyScreen({ lobbyCode, lobbyPlayers, isHost, isAdmin, kickPlayer, startRaceByHost, quitRace, userId, targetLaps, setTargetLaps }: LobbyScreenProps) {
   const [copied, setCopied] = useState(false);
   const { toast } = useToast();
+  const lapOptions = [3, 5, 8, 10];
 
   const handleCopyCode = () => {
     navigator.clipboard.writeText(lobbyCode).then(() => {
@@ -43,6 +47,23 @@ export function LobbyScreen({ lobbyCode, lobbyPlayers, isHost, isAdmin, kickPlay
           <Button onClick={handleCopyCode} variant="ghost" size="icon" className="h-10 w-10">
             {copied ? <Check size={20} className="text-green-400" /> : <Copy size={20} />}
           </Button>
+        </div>
+
+        <div className="mb-8 flex justify-center items-center gap-4">
+          <span className="text-muted-foreground font-bold">TUR SAYISI:</span>
+           <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" className="w-32 justify-between" disabled={!isHost}>
+                  {targetLaps} Tur
+                  <ChevronDown />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent>
+                {lapOptions.map(lap => (
+                  <DropdownMenuItem key={lap} onSelect={() => setTargetLaps(lap)}>{lap} Tur</DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 mb-8">

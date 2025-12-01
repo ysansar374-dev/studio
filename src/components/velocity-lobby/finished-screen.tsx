@@ -12,7 +12,16 @@ type FinishedScreenProps = {
 };
 
 export function FinishedScreen({ playerCar, setGameState, leaderboard }: FinishedScreenProps) {
-  const sortedLeaderboard = leaderboard.sort((a,b) => (b.x || 0) - (a.x || 0));
+  // Sort by lap (desc), then by position on track (x, desc)
+  const sortedLeaderboard = [...leaderboard].sort((a, b) => {
+    const lapA = a.lap || 0;
+    const lapB = b.lap || 0;
+    if (lapB !== lapA) {
+      return lapB - lapA;
+    }
+    return (b.x || 0) - (a.x || 0);
+  });
+  
   const playerResult = sortedLeaderboard.find(p => p.isMe);
   const playerRank = sortedLeaderboard.findIndex(p => p.isMe) + 1;
   

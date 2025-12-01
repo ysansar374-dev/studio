@@ -34,7 +34,7 @@ export default function VelocityLobbyClient() {
     teamId: TEAMS[0].id
   });
   const [aiLoading, setAiLoading] = useState(false);
-  const [assistEnabled, setAssistEnabled] = useState(false);
+  const [assistEnabled, setAssistEnabled] = useState(true);
 
   // Lobby State
   const [lobbyCode, setLobbyCode] = useState("");
@@ -189,6 +189,16 @@ export default function VelocityLobbyClient() {
     setOpponents({});
     setIsHost(false);
   }, []);
+
+  const handleSetTargetLaps = useCallback(async (laps: number) => {
+    setTargetLaps(laps);
+    if (isHost && lobbyCode) {
+      const lobbyDocRef = getLobbyDocRef(lobbyCode);
+      if (lobbyDocRef) {
+        await updateDoc(lobbyDocRef, { laps });
+      }
+    }
+  }, [isHost, lobbyCode, getLobbyDocRef]);
 
 
   // Centralized listener for lobby and race data
@@ -478,7 +488,7 @@ export default function VelocityLobbyClient() {
     return <MenuScreen {...{ playerCar, setPlayerCar, aiLoading, onPilotNameChange: handlePilotNameChange, onGenerateTeamName: () => generateTeamName(playerCar.name), inputLobbyCode, setInputLobbyCode, joinLobby, createLobby, connectionStatus, resetDatabase, isAdmin, handleAdminLogin, publicLobbies, refreshLobbies, lobbiesLoading, assistEnabled, setAssistEnabled }} />;
   }
   if (gameState === 'lobby') {
-    return <LobbyScreen {...{ lobbyCode, lobbyPlayers, isHost, startRaceByHost, quitRace, userId: user?.uid ?? null, isAdmin, kickPlayer }} />;
+    return <LobbyScreen {...{ lobbyCode, lobbyPlayers, isHost, startRaceByHost, quitRace, userId: user?.uid ?? null, isAdmin, kickPlayer, targetLaps, setTargetLaps: handleSetTargetLaps }} />;
   }
   if (gameState === 'race') {
     return <RaceScreen {...{ playerCar, opponents, setGameState, lapInfo, setLapInfo, syncMultiplayer, triggerRaceEngineer, radioMessage, radioLoading, quitRace, isAdmin, kickPlayer, assistEnabled, onRaceFinish, userId: user.uid, lobbyPlayers }} />;
