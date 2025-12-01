@@ -379,19 +379,6 @@ export function RaceScreen({
       ctx.lineTo(i, getRoadCurve(i) + getRoadWidth(i) / 2);
     }
     ctx.stroke();
-
-    const kerb_height = 20;
-    for (let i = Math.floor(phys.current.x / 100) * 100 - 4000; i < phys.current.x + 4000; i += 100) {
-      const roadY = getRoadCurve(i);
-      const roadW = getRoadWidth(i);
-      ctx.fillStyle = (i / 100) % 2 === 0 ? '#ef4444' : 'white';
-      ctx.beginPath();
-      ctx.moveTo(i, roadY - roadW / 2);
-      ctx.lineTo(i + 100, roadY - roadW / 2);
-      ctx.lineTo(i + 100, roadY - roadW / 2 - kerb_height);
-      ctx.lineTo(i, roadY - roadW / 2 - kerb_height);
-      ctx.fill();
-    }
     
     // Draw finish line
     if (phys.current.x > TRACK_LENGTH - 500 || phys.current.x < 500) {
