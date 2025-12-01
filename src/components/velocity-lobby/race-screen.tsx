@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import type { PlayerCar, Player, Opponent } from '@/types';
 import { ACCELERATION, BASE_ROAD_Y, FRICTION_ROAD, LANE_SPEED, MAX_SPEED_DRS, MAX_SPEED_NORMAL, TRACK_LENGTH, WALL_BOUNCE, STEERING_ASSIST_STRENGTH, STEERING_SENSITIVITY, SYNC_INTERVAL } from '@/lib/constants';
-import { Loader2, LogOut, Plus, Radio, Zap, ShieldAlert, X, Thermometer } from 'lucide-react';
+import { Loader2, LogOut, Plus, Radio, Zap, ShieldAlert, X, Thermometer, ShieldQuestion } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 type RaceScreenProps = {
@@ -53,13 +53,37 @@ export function RaceScreen({
   const requestRef = useRef<number>();
   const gameActive = useRef(true);
   
+  // Miami GP inspired track
   const getRoadCurve = useCallback((x: number) => {
-    const val = x || 0;
-    // Wide, sweeping S-curves, generally moving downwards
+    const val = (x % TRACK_LENGTH + TRACK_LENGTH) % TRACK_LENGTH;
     let y = BASE_ROAD_Y;
-    y += Math.sin(val / 2000) * 1200; // Large, wide curve
-    y += Math.cos(val / 1000) * 800; // Tighter curve
-    y += Math.sin(val / 500) * 200; // Small wiggles
+
+    // Sector 1: Start straight -> Turn 1-2-3 complex
+    if (val > 500 && val < 2000) {
+        const t = (val - 500) / 1500;
+        y += -Math.sin(t * Math.PI) * 400; // Turn 1 (long left)
+    } else if (val >= 2000 && val < 3000) {
+        const t = (val - 2000) / 1000;
+        y += -400 + Math.sin(t * Math.PI * 0.5) * 600; // Curve towards Turn 4
+    }
+    // Sector 2: Turn 4-5-6-7 complex -> Long back straight
+    else if (val >= 3000 && val < 5000) {
+        const t = (val - 3000) / 2000;
+        y += 200 - Math.cos(t * Math.PI * 1.5) * 700; // Winding section
+        y += Math.sin(t * Math.PI * 2.5) * 300;
+    }
+    // Sector 3: DRS Straight -> Turn 8-9-10-11
+    else if (val >= 7500 && val < 9500) {
+        const t = (val - 7500) / 2000;
+        y += Math.sin(t * Math.PI) * 600; // Turns 8-9-10
+    } else if (val >= 9500 && val < 11000) {
+         const t = (val - 9500) / 1500;
+         y += 600 - t * 1200; // down towards Turn 11
+    } else if (val >= 11000 && val < 13000) {
+        const t = (val - 11000) / 2000;
+        y += -600 - Math.sin(t * Math.PI * 0.5) * 600; // Long Turn 11
+    }
+
     return y;
   }, []);
 
@@ -71,9 +95,8 @@ export function RaceScreen({
           return { x: 0, y: getRoadCurve(0) };
       }
 
-      const numPlayers = sortedPlayers.length;
-      const laneWidth = 60; // Increased spacing
-      const gridDepth = 120; // Increased spacing
+      const laneWidth = 60;
+      const gridDepth = 120;
 
       // Staggered grid
       const column = playerIndex % 2; // 0 for left, 1 for right
@@ -81,11 +104,11 @@ export function RaceScreen({
 
       const yOffset = (column - 0.5) * laneWidth;
       const xOffset = -row * gridDepth;
+      
+      const startX = xOffset;
+      const startY = getRoadCurve(startX) + yOffset;
 
-      return {
-          x: xOffset,
-          y: getRoadCurve(xOffset) + yOffset,
-      };
+      return { x: startX, y: startY };
   }, [lobbyPlayers, getRoadCurve]);
 
   const phys = useRef({ x: getStartingPosition(userId).x, y: getStartingPosition(userId).y, speed: 0, collision: false, wheelAngle: 0, angle: 0, tyreTemp: 20 });
@@ -133,7 +156,10 @@ export function RaceScreen({
    }, [opponents, getStartingPosition]);
 
    const getRoadWidth = useCallback((x: number) => {
-    return 800 + Math.sin(x / 1500) * 200; // Dynamically changing width
+    const val = (x % TRACK_LENGTH + TRACK_LENGTH) % TRACK_LENGTH;
+    if (val > 11000 && val < 13000) return 400; // Narrower final turn
+    if (val > 3000 && val < 5000) return 500; // Narrower winding section
+    return 800; // Wide straights
   }, []);
   
 
@@ -364,6 +390,13 @@ export function RaceScreen({
     drawMiniMap(ctx, screenW, screenH);
   }, [getRoadCurve, getRoadWidth, drawCar, drawSparks, playerCar, drsState.active, userId]);
 
+  const respawnPlayer = useCallback(() => {
+      const p = phys.current;
+      p.y = getRoadCurve(p.x);
+      p.angle = 0;
+      p.speed *= 0.5; // Reduce speed on respawn
+  }, [getRoadCurve]);
+
 
   const loop = useCallback((time: number) => {
     if (!gameActive.current) return;
@@ -375,7 +408,6 @@ export function RaceScreen({
     const allRacers = [
       ...Object.values(interpolatedOpponents.current).map(o => ({...o.current, isMe: o.current.id === userId})),
       ...botsRef.current,
-      // Player is now included via the interpolatedOpponents map
     ].filter(r => r.id).sort((a, b) => (b.x || 0) - (a.x || 0));
 
     if (!allRacers.find(r => r.id === userId) && !lapInfoRef.current.finished) {
@@ -659,9 +691,10 @@ export function RaceScreen({
       if (key === 's') inputs.current.brake = true;
       if (key === 'a') inputs.current.left = true;
       if (key === 'd') inputs.current.right = true;
-      if (e.key === ' ' || e.key === 'Shift') inputs.current.drs = true;
+      if (e.key === ' ') inputs.current.drs = true;
       if (e.key === 'Escape') quitRace();
       if (key === 'r') triggerRaceEngineer(phys.current, drsState, lapInfoRef.current);
+      if (key === 't') respawnPlayer();
     };
     const hU = (e: KeyboardEvent) => {
       const key = e.key.toLowerCase();
@@ -669,7 +702,7 @@ export function RaceScreen({
       if (key === 's') inputs.current.brake = false;
       if (key === 'a') inputs.current.left = false;
       if (key === 'd') inputs.current.right = false;
-      if (e.key === ' ' || e.key === 'Shift') inputs.current.drs = false;
+      if (e.key === ' ') inputs.current.drs = false;
     };
     window.addEventListener('keydown', hD);
     window.addEventListener('keyup', hU);
@@ -709,7 +742,7 @@ export function RaceScreen({
       gameActive.current = false;
       if (requestRef.current) cancelAnimationFrame(requestRef.current);
     };
-  }, [loop, quitRace, triggerRaceEngineer, drsState, raceStatus, onRaceFinish, playerCar, userId, lapInfo.total]);
+  }, [loop, quitRace, triggerRaceEngineer, drsState, raceStatus, onRaceFinish, playerCar, userId, lapInfo.total, respawnPlayer]);
 
   const getTyreTempColor = (temp: number) => {
     if (temp > 105) return 'bg-red-600';
@@ -816,7 +849,10 @@ export function RaceScreen({
       </div>
       
       {/* Controls */}
-      <div className="absolute bottom-6 right-6 flex gap-3 pointer-events-auto">
+       <div className="absolute bottom-6 right-6 flex gap-3 pointer-events-auto">
+         <button onClick={respawnPlayer} disabled={raceStatus !== 'racing' || lapInfoRef.current.finished} className="bg-amber-600/80 hover:bg-amber-600 text-white px-5 py-3 rounded-xl font-bold text-xs flex items-center gap-2 backdrop-blur border transition-all disabled:opacity-50">
+            <ShieldQuestion size={16} /> GÜVENLİ ALAN (T)
+         </button>
          <button onClick={() => triggerRaceEngineer(phys.current, drsState, lapInfoRef.current)} disabled={radioLoading || raceStatus !== 'racing'} className="bg-primary/80 hover:bg-primary text-white px-5 py-3 rounded-xl font-bold text-xs flex items-center gap-2 backdrop-blur border transition-all disabled:opacity-50 disabled:cursor-wait">
             {radioLoading ? <Loader2 className="animate-spin" size={16} /> : <Radio size={16} />} TELSİZ (R)
          </button>
@@ -836,6 +872,3 @@ export function RaceScreen({
   );
 
 }
-
-    
-    
