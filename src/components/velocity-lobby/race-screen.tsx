@@ -254,7 +254,9 @@ export function RaceScreen({
   
   const drawMiniMap = (ctx: CanvasRenderingContext2D, screenW: number, screenH: number) => {
     const mapW = 250, mapH = 120, mapX = screenW - mapW - 20, mapY = 20;
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.8)'; ctx.strokeStyle = 'hsl(var(--border))'; ctx.lineWidth = 2;
+    ctx.fillStyle = 'hsla(var(--card) / 0.7)';
+    ctx.strokeStyle = 'hsl(var(--border))'; 
+    ctx.lineWidth = 1;
     ctx.beginPath(); ctx.roundRect(mapX, mapY, mapW, mapH, 10); ctx.fill(); ctx.stroke();
 
     ctx.save();
@@ -263,7 +265,10 @@ export function RaceScreen({
     const scaleY = 0.05; // Reduced vertical scale for a less dramatic map
     const baseY = mapY + mapH / 2;
 
-    ctx.beginPath(); ctx.strokeStyle = 'hsl(var(--muted-foreground))'; ctx.lineWidth = 4;
+    const miniMapRoadWidth = getRoadWidth(0) * scaleY * 0.2;
+    ctx.beginPath(); 
+    ctx.strokeStyle = 'hsl(var(--muted-foreground))';
+    ctx.lineWidth = miniMapRoadWidth;
     for (let i = 0; i < TRACK_LENGTH; i += 200) {
       const mx = mapX + (i * scaleX);
       const my = baseY + (getRoadCurve(i) - BASE_ROAD_Y) * scaleY;
