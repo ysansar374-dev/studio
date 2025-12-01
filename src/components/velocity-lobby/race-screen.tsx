@@ -55,9 +55,9 @@ export function RaceScreen({
   const gameActive = useRef(true);
   
   const getRoadCurve = useCallback((x: number) => {
-    const pos = x / (TRACK_LENGTH / 2); // Use half track length for a full wave cycle
-    const sin1 = Math.sin(pos * Math.PI) * 1000;
-    const sin2 = Math.sin(pos * Math.PI * 0.5) * 1500;
+    const pos = x / (TRACK_LENGTH / 4); // Use half track length for a full wave cycle
+    const sin1 = Math.sin(pos * Math.PI) * 800;
+    const sin2 = Math.sin(pos * Math.PI * 0.5) * 1200;
     return BASE_ROAD_Y + sin1 + sin2;
 }, []);
 
@@ -65,7 +65,7 @@ export function RaceScreen({
       const sortedPlayers = [...lobbyPlayers].sort((a, b) => a.id.localeCompare(b.id));
       const playerIndex = sortedPlayers.findIndex(p => p.id === playerId);
       
-      const startX = 0;
+      const startX = 100;
       if (playerIndex === -1) {
           // Default for opponents not yet in the lobby list
           return { x: startX, y: getRoadCurve(startX) };
@@ -222,8 +222,8 @@ export function RaceScreen({
     ctx.save();
     ctx.beginPath(); ctx.roundRect(mapX, mapY, mapW, mapH, 10); ctx.clip();
     
-    const scaleX = mapW / TRACK_LENGTH;
     const trackHeightRange = 3500;
+    const scaleX = mapW / TRACK_LENGTH;
     const scaleY = mapH / trackHeightRange;
 
     const miniMapRoadWidth = getRoadWidth(0) * scaleY * 0.8;
@@ -490,18 +490,14 @@ export function RaceScreen({
           const frontWheelY = p.y + CAR_LENGTH / 2 * Math.sin(p.angle);
           const backWheelX = p.x - CAR_LENGTH / 2 * Math.cos(p.angle);
           const backWheelY = p.y - CAR_LENGTH / 2 * Math.sin(p.angle);
-
+          
           const backWheelSpeed = p.speed * gripModifier;
           
-          const newBackWheelX = backWheelX + backWheelSpeed * Math.cos(p.angle);
-          const newBackWheelY = backWheelY + backWheelSpeed * Math.sin(p.angle);
+          p.x += backWheelSpeed * Math.cos(p.angle);
+          p.y += backWheelSpeed * Math.sin(p.angle);
           
-          const newFrontWheelX = frontWheelX + backWheelSpeed * Math.cos(p.angle + p.wheelAngle);
-          const newFrontWheelY = frontWheelY + backWheelSpeed * Math.sin(p.angle + p.wheelAngle);
-
-          p.x = (newFrontWheelX + newBackWheelX) / 2;
-          p.y = (newFrontWheelY + newBackWheelY) / 2;
-          p.angle = Math.atan2(newFrontWheelY - newBackWheelY, newFrontWheelX - newBackWheelX);
+          const turnAngle = (backWheelSpeed / CAR_LENGTH) * Math.tan(p.wheelAngle);
+          p.angle += turnAngle;
       }
       
       p.collision = false;
