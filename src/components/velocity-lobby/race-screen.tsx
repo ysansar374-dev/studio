@@ -55,9 +55,9 @@ export function RaceScreen({
   const gameActive = useRef(true);
   
   const getRoadCurve = useCallback((x: number) => {
-    const pos = x / TRACK_LENGTH;
-    const sin1 = Math.sin(pos * Math.PI * 2) * 500; // Large, sweeping S-curve
-    const sin2 = Math.sin(pos * Math.PI * 6) * 250; // Tighter, more frequent wiggles
+    const pos = (x % TRACK_LENGTH) / TRACK_LENGTH;
+    const sin1 = Math.sin(pos * Math.PI * 2) * 1000; // A large, single S-curve
+    const sin2 = Math.sin(pos * Math.PI * 4) * 400; // A smaller, double S-curve
     return BASE_ROAD_Y + sin1 + sin2;
   }, []);
 
@@ -65,8 +65,9 @@ export function RaceScreen({
       const sortedPlayers = [...lobbyPlayers].sort((a, b) => a.id.localeCompare(b.id));
       const playerIndex = sortedPlayers.findIndex(p => p.id === playerId);
       
+      const startX = 0;
       if (playerIndex === -1) {
-          return { x: 0, y: getRoadCurve(0) };
+          return { x: startX, y: getRoadCurve(startX) };
       }
 
       const laneWidth = 60;
@@ -78,10 +79,10 @@ export function RaceScreen({
       const yOffset = (column - 0.5) * laneWidth;
       const xOffset = -row * gridDepth;
       
-      const startX = xOffset;
-      const startY = getRoadCurve(startX) + yOffset;
+      const finalX = startX + xOffset;
+      const finalY = getRoadCurve(finalX) + yOffset;
 
-      return { x: startX, y: startY };
+      return { x: finalX, y: finalY };
   }, [lobbyPlayers, getRoadCurve]);
 
   const phys = useRef({ x: getStartingPosition(userId).x, y: getStartingPosition(userId).y, speed: 0, collision: false, wheelAngle: 0, angle: 0, tyreTemp: 20 });
@@ -221,17 +222,18 @@ export function RaceScreen({
     ctx.beginPath(); ctx.roundRect(mapX, mapY, mapW, mapH, 10); ctx.clip();
     
     const scaleX = mapW / TRACK_LENGTH;
-    const trackHeight = 1000; 
-    const scaleY = mapH / trackHeight;
-    const baseY = mapY + mapH / 2 - (BASE_ROAD_Y * scaleY);
+    const trackHeightRange = 2500;
+    const scaleY = mapH / trackHeightRange;
+
+    const miniMapRoadWidth = getRoadWidth(0) * scaleY * 0.5;
     
-    ctx.strokeStyle = 'hsl(var(--muted-foreground))';
-    const miniMapRoadWidth = getRoadWidth(0) * scaleY;
     ctx.lineWidth = miniMapRoadWidth;
+    ctx.strokeStyle = 'hsl(var(--muted-foreground))';
     ctx.beginPath(); 
+
     for (let i = 0; i <= TRACK_LENGTH; i += 50) {
       const mx = mapX + (i * scaleX);
-      const my = baseY + getRoadCurve(i) * scaleY;
+      const my = mapY + mapH/2 + (getRoadCurve(i) - BASE_ROAD_Y) * scaleY;
       if (i === 0) ctx.moveTo(mx, my); else ctx.lineTo(mx, my);
     }
     ctx.stroke();
@@ -239,7 +241,8 @@ export function RaceScreen({
     const drawDot = (x: number, color: string, radius: number, hasBorder: boolean) => {
       const lapPos = ((x % TRACK_LENGTH) + TRACK_LENGTH) % TRACK_LENGTH;
       const mx = mapX + (lapPos * scaleX);
-      const my = baseY + getRoadCurve(lapPos) * scaleY;
+      const my = mapY + mapH/2 + (getRoadCurve(lapPos) - BASE_ROAD_Y) * scaleY;
+
       ctx.beginPath(); ctx.arc(mx, my, radius, 0, Math.PI * 2); ctx.fillStyle = color; ctx.fill();
       if (hasBorder) { ctx.strokeStyle = 'white'; ctx.lineWidth = 1; ctx.stroke(); }
     };
@@ -333,23 +336,30 @@ export function RaceScreen({
     path.closePath();
     ctx.fill(path);
 
-    drawRacingLine(ctx);
+    if (assistEnabled) {
+      drawRacingLine(ctx);
+    }
 
     ctx.strokeStyle = '#cfd8dc';
     ctx.lineWidth = 10;
     ctx.beginPath();
     for (let i = Math.floor(phys.current.x / 20) * 20 - 4000; i < phys.current.x + 4000; i += 20) {
+      const currentX = i;
+      if (currentX < -2000 || currentX > TRACK_LENGTH + 2000) continue;
       ctx.lineTo(i, getRoadCurve(i) - getRoadWidth(i) / 2);
     }
     ctx.stroke();
     ctx.beginPath();
     for (let i = Math.floor(phys.current.x / 20) * 20 - 4000; i < phys.current.x + 4000; i += 20) {
+      const currentX = i;
+      if (currentX < -2000 || currentX > TRACK_LENGTH + 2000) continue;
       ctx.lineTo(i, getRoadCurve(i) + getRoadWidth(i) / 2);
     }
     ctx.stroke();
     
     if (phys.current.x > TRACK_LENGTH - 500 || phys.current.x < 500) {
-        drawCheckeredLine(ctx, 0, getRoadCurve(0) - getRoadWidth(0)/2, getRoadWidth(0));
+        const startX = 0;
+        drawCheckeredLine(ctx, startX, getRoadCurve(startX) - getRoadWidth(startX)/2, getRoadWidth(startX));
     }
 
     botsRef.current.forEach(bot => {
@@ -357,8 +367,8 @@ export function RaceScreen({
     });
 
      Object.values(interpolatedOpponents.current).forEach(o => {
-      if (o.current.id !== userId) {
-        drawCar(ctx, o.current.x || 0, o.current.y || 0, o.current.color, o.current.name, false, false, 0, o.current.angle || 0, 0);
+      if (o.current.id !== userId && o.current.x) {
+        drawCar(ctx, o.current.x, o.current.y || 0, o.current.color, o.current.name, false, false, 0, o.current.angle || 0, 0);
       }
     });
 
@@ -371,7 +381,7 @@ export function RaceScreen({
     ctx.restore();
     
     drawMiniMap(ctx, screenW, screenH);
-  }, [getRoadCurve, getRoadWidth, drawCar, drawSparks, drawRacingLine, playerCar, drsState.active, userId]);
+  }, [getRoadCurve, getRoadWidth, drawCar, drawSparks, drawRacingLine, playerCar, drsState.active, userId, assistEnabled]);
 
   const respawnPlayer = useCallback(() => {
       const p = phys.current;
@@ -387,24 +397,27 @@ export function RaceScreen({
     const p = phys.current;
     const i = inputs.current;
     
-    const allRacers = [
-      ...Object.values(interpolatedOpponents.current).map(o => ({...o.current, isMe: o.current.id === userId})),
+    const allRacersRaw = [
+      ...Object.values(interpolatedOpponents.current).map(o => ({...o.current, x: o.current.x || 0, isMe: o.current.id === userId})),
       ...botsRef.current,
-    ].filter(r => r.id).sort((a, b) => (b.x || 0) - (a.x || 0));
-
-    if (!allRacers.find(r => r.id === userId) && !lapInfoRef.current.finished) {
-      allRacers.push({ name: playerCar.name, id: userId, x: phys.current.x, isMe: true } as Player);
-      allRacers.sort((a, b) => (b.x || 0) - (a.x || 0));
+    ];
+    if (!lapInfoRef.current.finished) {
+      allRacersRaw.push({ name: playerCar.name, id: userId, x: phys.current.x, isMe: true, color: playerCar.color, team: playerCar.team, ready: true } as Player);
     }
+
+    const allRacers = allRacersRaw
+        .filter((p, index, self) => p.id && self.findIndex(t => t.id === p.id) === index)
+        .sort((a, b) => (b.x || 0) - (a.x || 0));
+
     
     const playerRank = allRacers.findIndex(r => r.id === userId);
     
     let speedModifier = 1.0;
-    if (raceStatus === 'racing') {
-        if (playerRank === 0 && allRacers.length > 1) {
-            speedModifier = 0.98;
-        } else if (playerRank === allRacers.length - 1 && allRacers.length > 1 && playerRank !== -1) {
-            speedModifier = 1.02;
+    if (raceStatus === 'racing' && allRacers.length > 1 && playerRank !== -1) {
+        if (playerRank === 0) {
+            speedModifier = 0.98; // Leader is slightly slower
+        } else if (playerRank === allRacers.length - 1) {
+            speedModifier = 1.02; // Last place gets a boost
         }
     }
     
@@ -510,10 +523,10 @@ export function RaceScreen({
               const pushY = (dy / distance) * overlap;
               
               if(racerA.id === userId) { p.x += pushX; p.y += pushY; } 
-              else { racerA.x += pushX; racerA.y += pushY; }
+              else if(racerA.x) { racerA.x += pushX; racerA.y += pushY; }
 
               if(racerB.id === userId) { p.x -= pushX; p.y -= pushY; }
-              else { racerB.x -= pushX; racerB.y -= pushY; }
+              else if (racerB.x) { racerB.x -= pushX; racerB.y -= pushY; }
               
 
               if (racerA.id === userId || racerB.id === userId) {
@@ -566,10 +579,10 @@ export function RaceScreen({
       
     botsRef.current.forEach((bot, index) => {
         if(!(bot as any).speed) (bot as any).speed = 18 + Math.random() * 4;
-        if(!(bot as any).offsetY) (bot as any).offsetY = (Math.random() - 0.5) * (getRoadWidth(bot.x || 0) - 60);
+        const botX = bot.x || 0;
+        if(!(bot as any).offsetY) (bot as any).offsetY = (Math.random() - 0.5) * (getRoadWidth(botX) - 60);
 
         const botSpeed = (bot as any).speed || 0;
-        const botX = bot.x || 0;
         const botY = bot.y || 0;
         const idealY = getRoadCurve(botX) + ((bot as any).offsetY || 0);
 
@@ -711,7 +724,8 @@ export function RaceScreen({
         return;
       }
       
-      const allHumansFinished = Object.values(opponentsRef.current).every(opp => (opp.lap || 0) > lapInfo.total);
+      const realOpponents = Object.values(opponentsRef.current).filter(o => o.id);
+      const allHumansFinished = realOpponents.every(opp => (opp.lap || 0) > lapInfo.total);
 
       if (lapInfoRef.current.finished && allHumansFinished) {
           const finalLeaderboard = [
@@ -722,8 +736,8 @@ export function RaceScreen({
           .sort((a, b) => (b.lap || 0) - (a.lap || 0) || (b.x || 0) - (a.x || 0));
 
           onRaceFinish(finalLeaderboard as Player[]);
-          gameActive.current = false;
           setRaceStatus('finished');
+          if (requestRef.current) cancelAnimationFrame(requestRef.current);
           clearInterval(finishCheckInterval);
       }
     }, 2000);
@@ -833,11 +847,10 @@ export function RaceScreen({
             <div className="space-y-2 font-code text-sm">
                  {leaderboardData.slice(0, 10).map((d, i) => {
                      const leaderX = leaderboardData[0]?.x || 0;
-                     const isPlayerFinished = lapInfoRef.current.finished;
                      const isThisRacerMe = d.id === userId;
 
                      return (
-                        <div key={d.id || i} className={`flex justify-between items-center p-1 rounded group ${(isThisRacerMe && !isPlayerFinished) ? 'bg-accent/20 text-accent font-bold border-l-2 border-accent' : 'text-foreground'}`}>
+                        <div key={d.id || i} className={`flex justify-between items-center p-1 rounded group ${isThisRacerMe && !lapInfoRef.current.finished ? 'bg-accent/20 text-accent font-bold border-l-2 border-accent' : 'text-foreground'}`}>
                             <div className="flex items-center gap-2"><span className="text-muted-foreground w-4">{i + 1}</span><span className="truncate w-24">{d.name}</span></div>
                             <div className="flex items-center gap-2">
                               <span className={i === 0 ? 'text-green-400' : 'text-red-400'}>{i === 0 ? 'LİDER' : `+${Math.floor((leaderX - (d.x || 0)))}m`}</span>
@@ -869,7 +882,7 @@ export function RaceScreen({
       </div>
       
        <div className="absolute bottom-6 right-6 flex gap-3 pointer-events-auto">
-         <button onClick={respawnPlayer} disabled={raceStatus !== 'racing' || lapInfoRef.current.finished} className="bg-amber-600/80 hover:bg-amber-600 text-white px-5 py-3 rounded-xl font-bold text-xs flex items-center gap-2 backdrop-blur border transition-all disabled:opacity-50">
+         <button onClick={respawnPlayer} disabled={raceStatus !== 'racing'} className="bg-amber-600/80 hover:bg-amber-600 text-white px-5 py-3 rounded-xl font-bold text-xs flex items-center gap-2 backdrop-blur border transition-all disabled:opacity-50">
             <ShieldQuestion size={16} /> GÜVENLİ ALAN (T)
          </button>
          <button onClick={() => triggerRaceEngineer(phys.current, drsState, lapInfoRef.current)} disabled={radioLoading || raceStatus !== 'racing'} className="bg-primary/80 hover:bg-primary text-white px-5 py-3 rounded-xl font-bold text-xs flex items-center gap-2 backdrop-blur border transition-all disabled:opacity-50 disabled:cursor-wait">
