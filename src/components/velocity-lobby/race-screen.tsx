@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import type { PlayerCar, Player, Opponent } from '@/types';
 import { ACCELERATION, BASE_ROAD_Y, FRICTION_ROAD, LANE_SPEED, MAX_SPEED_DRS, MAX_SPEED_NORMAL, TRACK_LENGTH, WALL_BOUNCE, STEERING_ASSIST_STRENGTH, STEERING_SENSITIVITY, SYNC_INTERVAL } from '@/lib/constants';
-import { Loader2, LogOut, Plus, Radio, Zap, ShieldAlert, X, Thermometer, ShieldQuestion } from 'lucide-react';
+import { Loader2, LogOut, Plus, Radio, Zap, ShieldAlert, X, Thermometer, ShieldQuestion, ChevronsRight, ChevronsLeft, ArrowUpRight, ArrowDownRight, ArrowUpLeft, ArrowDownLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 type RaceScreenProps = {
@@ -26,6 +26,7 @@ type RaceScreenProps = {
 };
 
 type RaceStatus = 'countdown' | 'racing' | 'finished';
+type TurnInfo = { direction: 'left' | 'right' | 'straight', sharpness: 'hairpin' | 'sharp' | 'medium' | 'slight' | 'none' };
 
 const CountdownLight = ({ active }: { active: boolean }) => (
     <div className={`w-16 h-16 sm:w-24 sm:h-24 rounded-full border-4 border-black transition-colors duration-200 ${active ? 'bg-red-600 shadow-[0_0_30px_10px_rgba(255,0,0,0.7)]' : 'bg-neutral-800'}`}></div>
@@ -123,6 +124,8 @@ export function RaceScreen({
   const [drsState, setDrsState] = useState({ active: false, charge: 100 });
   const [leaderboardData, setLeaderboardData] = useState<Player[]>([]);
   const [windowSize, setWindowSize] = useState({ width: 1920, height: 1080 });
+  const [turnInfo, setTurnInfo] = useState<TurnInfo>({ direction: 'straight', sharpness: 'none' });
+
   
   const [raceStatus, setRaceStatus] = useState<RaceStatus>('countdown');
   const [countdownState, setCountdownState] = useState({ lights: [false, false, false, false, false], text: '' });
@@ -305,6 +308,33 @@ export function RaceScreen({
     });
   }, []);
 
+  const drawRacingLine = useCallback((ctx: CanvasRenderingContext2D) => {
+    ctx.fillStyle = 'rgba(255, 235, 59, 0.2)'; // Semi-transparent yellow
+    const arrowWidth = 40;
+    const arrowHeight = 20;
+
+    for (let i = Math.floor(phys.current.x / 100) * 100 - 2000; i < phys.current.x + 3000; i += 150) {
+      const currentY = getRoadCurve(i);
+      const nextY = getRoadCurve(i + 50);
+      const angle = Math.atan2(nextY - currentY, 50);
+
+      ctx.save();
+      ctx.translate(i, currentY);
+      ctx.rotate(angle);
+
+      // Draw a chevron/arrow shape
+      ctx.beginPath();
+      ctx.moveTo(arrowHeight / 2, 0);
+      ctx.lineTo(-arrowHeight / 2, -arrowWidth / 2);
+      ctx.lineTo(-arrowHeight / 4, 0);
+      ctx.lineTo(-arrowHeight / 2, arrowWidth / 2);
+      ctx.closePath();
+      ctx.fill();
+
+      ctx.restore();
+    }
+  }, [getRoadCurve, phys]);
+
   const draw = useCallback(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -332,6 +362,9 @@ export function RaceScreen({
       ctx.lineTo(i, roadY + getRoadWidth(i) / 2);
     }
     ctx.fill();
+
+    // Draw racing line
+    drawRacingLine(ctx);
 
     // Draw lines and kerbs
     ctx.strokeStyle = '#cfd8dc';
@@ -388,7 +421,7 @@ export function RaceScreen({
     ctx.restore();
     
     drawMiniMap(ctx, screenW, screenH);
-  }, [getRoadCurve, getRoadWidth, drawCar, drawSparks, playerCar, drsState.active, userId]);
+  }, [getRoadCurve, getRoadWidth, drawCar, drawSparks, drawRacingLine, playerCar, drsState.active, userId]);
 
   const respawnPlayer = useCallback(() => {
       const p = phys.current;
@@ -616,10 +649,32 @@ export function RaceScreen({
         }
     });
 
+    // Turn detection logic
+    const lookAhead = 400 + p.speed * 10;
+    const yNow = getRoadCurve(p.x);
+    const yAhead = getRoadCurve(p.x + lookAhead);
+    const yFarAhead = getRoadCurve(p.x + lookAhead * 2);
+
+    const delta1 = yAhead - yNow;
+    const delta2 = yFarAhead - yAhead;
+    
+    const combinedDelta = (delta1 + delta2) / 2;
+
+    let newTurnInfo: TurnInfo = { direction: 'straight', sharpness: 'none' };
+    if (Math.abs(combinedDelta) > 10) {
+        newTurnInfo.direction = combinedDelta > 0 ? 'right' : 'left';
+        const sharpnessValue = Math.abs(combinedDelta);
+        if (sharpnessValue > 150) newTurnInfo.sharpness = 'hairpin';
+        else if (sharpnessValue > 80) newTurnInfo.sharpness = 'sharp';
+        else if (sharpnessValue > 30) newTurnInfo.sharpness = 'medium';
+        else newTurnInfo.sharpness = 'slight';
+    }
+    
 
     uiUpdateTimer.current++;
     if (uiUpdateTimer.current % 10 === 0) {
         setLeaderboardData(allRacers as Player[]);
+        setTurnInfo(newTurnInfo);
     }
     
     if (time - lastSync.current > SYNC_INTERVAL) {
@@ -751,6 +806,30 @@ export function RaceScreen({
     return 'bg-blue-400';
   }
 
+  const getTurnIcon = (turn: TurnInfo) => {
+      if (turn.direction === 'left') {
+          if (turn.sharpness === 'hairpin' || turn.sharpness === 'sharp') return <ChevronsLeft className="h-8 w-8" />;
+          return <ArrowDownLeft className="h-8 w-8" />;
+      }
+      if (turn.direction === 'right') {
+          if (turn.sharpness === 'hairpin' || turn.sharpness === 'sharp') return <ChevronsRight className="h-8 w-8" />;
+          return <ArrowUpRight className="h-8 w-8" />;
+      }
+      return <ArrowUpRight className="h-8 w-8 opacity-20" />;
+  }
+
+  const getTurnText = (turn: TurnInfo) => {
+    if (turn.direction === 'straight') return "Düzlük";
+    const dir = turn.direction === 'left' ? 'Sol' : 'Sağ';
+    switch(turn.sharpness) {
+        case 'hairpin': return `Keskin ${dir}`;
+        case 'sharp': return `Sert ${dir}`;
+        case 'medium': return `${dir} Viraj`;
+        case 'slight': return `Hafif ${dir}`;
+        default: return 'Düzlük';
+    }
+  }
+
   return (
     <div className="h-screen w-full bg-background overflow-hidden relative select-none cursor-none">
       <canvas ref={canvasRef} width={windowSize.width} height={windowSize.height} className="block" />
@@ -799,11 +878,19 @@ export function RaceScreen({
           </div>
         </div>
 
-
-        {/* Laps */}
-        <div className="bg-card/80 backdrop-blur text-white px-6 sm:px-10 py-4 rounded-b-3xl flex flex-col items-center border-b-4 border-accent shadow-lg shadow-accent/10">
-          <div className="text-xs font-bold text-muted-foreground tracking-[0.2em] mb-1">TUR</div>
-          <div className="text-4xl sm:text-5xl font-black flex items-baseline gap-2 font-headline">{lapInfo.current}<span className="text-xl sm:text-2xl text-muted-foreground">/{lapInfo.total}</span></div>
+        <div className="flex flex-col items-center gap-4">
+            {/* Laps */}
+            <div className="bg-card/80 backdrop-blur text-white px-6 sm:px-10 py-4 rounded-b-3xl flex flex-col items-center border-b-4 border-accent shadow-lg shadow-accent/10">
+              <div className="text-xs font-bold text-muted-foreground tracking-[0.2em] mb-1">TUR</div>
+              <div className="text-4xl sm:text-5xl font-black flex items-baseline gap-2 font-headline">{lapInfo.current}<span className="text-xl sm:text-2xl text-muted-foreground">/{lapInfo.total}</span></div>
+            </div>
+            {/* Turn Indicator */}
+             <div className={`bg-card/80 backdrop-blur text-white px-6 py-3 rounded-2xl flex items-center gap-4 border shadow-md transition-all duration-300 ${turnInfo.direction === 'straight' ? 'opacity-50' : 'border-yellow-400'}`}>
+                <div className={`transition-transform duration-300 ${turnInfo.direction === 'left' ? '-rotate-12' : turnInfo.direction === 'right' ? 'rotate-12' : ''}`}>
+                    {getTurnIcon(turnInfo)}
+                </div>
+                <div className="font-bold text-lg">{getTurnText(turnInfo)}</div>
+            </div>
         </div>
         
         {/* Leaderboard */}
