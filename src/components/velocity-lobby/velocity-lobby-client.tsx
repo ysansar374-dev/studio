@@ -116,19 +116,6 @@ export default function VelocityLobbyClient() {
     }
   }, [aiLoading]);
 
-  // Debounced effect for team name generation
-  useEffect(() => {
-    const handler = setTimeout(() => {
-      if (playerCar.name && playerCar.name !== 'Pilot' && !playerCar.name.startsWith('Pilot ')) {
-        generateTeamName(playerCar.name);
-      }
-    }, 1000); // 1s delay
-
-    return () => {
-      clearTimeout(handler);
-    };
-  }, [playerCar.name, generateTeamName]);
-
 
   // --- Initialization ---
   useEffect(() => {
