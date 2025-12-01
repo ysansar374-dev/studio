@@ -14,7 +14,7 @@ export const ROAD_WIDTH = 600;
 export const BASE_ROAD_Y = 400;
 
 // --- STEERING ---
-export const STEERING_SENSITIVITY = 0.5; // Max wheel angle
+export const STEERING_SENSITIVITY = 0.25; // Max wheel angle
 export const STEERING_ASSIST_STRENGTH = 0.02; // How strongly the car autocorrects to the road direction
 
 

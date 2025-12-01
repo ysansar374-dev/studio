@@ -56,9 +56,10 @@ export function RaceScreen({
   
   const getRoadCurve = useCallback((x: number) => {
     const pos = (x % TRACK_LENGTH) / TRACK_LENGTH;
-    const sin1 = Math.sin(pos * Math.PI * 2) * 1000; // A large, single S-curve
-    const sin2 = Math.sin(pos * Math.PI * 4) * 400; // A smaller, double S-curve
-    return BASE_ROAD_Y + sin1 + sin2;
+    const sin1 = Math.sin(pos * Math.PI * 2) * 500;
+    const sin2 = Math.sin(pos * Math.PI * 4) * 250;
+    const sin3 = Math.sin(pos * Math.PI * 8) * 100;
+    return BASE_ROAD_Y + sin1 + sin2 + sin3;
   }, []);
 
   const getStartingPosition = useCallback((playerId: string) => {
@@ -67,6 +68,7 @@ export function RaceScreen({
       
       const startX = 0;
       if (playerIndex === -1) {
+          // Default for opponents not yet in the lobby list
           return { x: startX, y: getRoadCurve(startX) };
       }
 
@@ -212,7 +214,7 @@ export function RaceScreen({
   };
   
   const drawMiniMap = (ctx: CanvasRenderingContext2D, screenW: number, screenH: number) => {
-    const mapW = 250, mapH = 120, mapX = screenW - mapW - 20, mapY = 20;
+    const mapW = 250, mapH = 120, mapX = 20, mapY = screenH - mapH - 20;
     ctx.fillStyle = 'hsla(var(--card) / 0.7)';
     ctx.strokeStyle = 'hsl(var(--border))'; 
     ctx.lineWidth = 1;
