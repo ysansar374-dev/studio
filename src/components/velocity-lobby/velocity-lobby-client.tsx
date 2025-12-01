@@ -34,7 +34,7 @@ export default function VelocityLobbyClient() {
     teamId: TEAMS[0].id
   });
   const [aiLoading, setAiLoading] = useState(false);
-  const [assistEnabled, setAssistEnabled] = useState(true);
+  const [assistEnabled, setAssistEnabled] = useState(false);
 
   // Lobby State
   const [lobbyCode, setLobbyCode] = useState("");
@@ -42,14 +42,14 @@ export default function VelocityLobbyClient() {
   const [isHost, setIsHost] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
   const [lobbyPlayers, setLobbyPlayers] = useState<Player[]>([]);
-  const [targetLaps, setTargetLaps] = useState(8);
+  const [targetLaps, setTargetLaps] = useState(3);
   const [publicLobbies, setPublicLobbies] = useState<Lobby[]>([]);
   const [lobbiesLoading, setLobbiesLoading] = useState(false);
 
 
   // Race State
   const [opponents, setOpponents] = useState<Record<string, Opponent>>({});
-  const [lapInfo, setLapInfo] = useState({ current: 1, total: 8, finished: false });
+  const [lapInfo, setLapInfo] = useState({ current: 1, total: 3, finished: false });
   const [radioMessage, setRadioMessage] = useState<string | null>(null);
   const [radioLoading, setRadioLoading] = useState(false);
   const [finalLeaderboard, setFinalLeaderboard] = useState<Player[]>([]);
@@ -101,11 +101,11 @@ export default function VelocityLobbyClient() {
     setGameState('finished');
   }, []);
 
-  const generateTeamName = useCallback(async (pilotName: string) => {
-    if (!pilotName || aiLoading) return;
+  const generateTeamName = useCallback(async () => {
+    if (!playerCar.name || aiLoading) return;
     setAiLoading(true);
     try {
-      const teamName = await generateTeamNameAction({ pilotName });
+      const teamName = await generateTeamNameAction({ pilotName: playerCar.name });
       setPlayerCar(prev => ({ ...prev, team: teamName.replace(/["']/g, '').trim() }));
     } catch(e) {
       console.error("AI team name generation failed", e);
@@ -114,7 +114,7 @@ export default function VelocityLobbyClient() {
     } finally {
       setAiLoading(false);
     }
-  }, [aiLoading]);
+  }, [aiLoading, playerCar.name]);
 
 
   // --- Initialization ---
@@ -218,9 +218,11 @@ export default function VelocityLobbyClient() {
         return;
       }
       const data = doc.data();
-      setTargetLaps(data.laps || 8);
+      const laps = data.laps || 3;
+      setTargetLaps(laps);
+      setLapInfo(li => ({...li, total: laps}));
       if (data.status === 'started' && gameState === 'lobby') {
-        startRaceSequence(data.laps || 8);
+        startRaceSequence(laps);
       }
     });
 
@@ -485,7 +487,7 @@ export default function VelocityLobbyClient() {
   }
 
   if (gameState === 'menu') {
-    return <MenuScreen {...{ playerCar, setPlayerCar, aiLoading, onPilotNameChange: handlePilotNameChange, onGenerateTeamName: () => generateTeamName(playerCar.name), inputLobbyCode, setInputLobbyCode, joinLobby, createLobby, connectionStatus, resetDatabase, isAdmin, handleAdminLogin, publicLobbies, refreshLobbies, lobbiesLoading, assistEnabled, setAssistEnabled }} />;
+    return <MenuScreen {...{ playerCar, setPlayerCar, aiLoading, onPilotNameChange: handlePilotNameChange, onGenerateTeamName: generateTeamName, inputLobbyCode, setInputLobbyCode, joinLobby, createLobby, connectionStatus, resetDatabase, isAdmin, handleAdminLogin, publicLobbies, refreshLobbies, lobbiesLoading, assistEnabled, setAssistEnabled }} />;
   }
   if (gameState === 'lobby') {
     return <LobbyScreen {...{ lobbyCode, lobbyPlayers, isHost, startRaceByHost, quitRace, userId: user?.uid ?? null, isAdmin, kickPlayer, targetLaps, setTargetLaps: handleSetTargetLaps }} />;

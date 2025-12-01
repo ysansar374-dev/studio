@@ -55,11 +55,11 @@ export function RaceScreen({
   const gameActive = useRef(true);
   
   const getRoadCurve = useCallback((x: number) => {
-    const pos = x / (TRACK_LENGTH / 4); // Use half track length for a full wave cycle
-    const sin1 = Math.sin(pos * Math.PI) * 800;
-    const sin2 = Math.sin(pos * Math.PI * 0.5) * 1200;
+    const pos = (x / TRACK_LENGTH) * 2 * Math.PI; // Normalize x to a 0-2PI range
+    const sin1 = Math.sin(pos * 2) * 800; // Two full curves over the track
+    const sin2 = Math.sin(pos * 5) * 400; // Five smaller wiggles
     return BASE_ROAD_Y + sin1 + sin2;
-}, []);
+  }, []);
 
   const getStartingPosition = useCallback((playerId: string) => {
       const sortedPlayers = [...lobbyPlayers].sort((a, b) => a.id.localeCompare(b.id));
@@ -67,7 +67,6 @@ export function RaceScreen({
       
       const startX = 100;
       if (playerIndex === -1) {
-          // Default for opponents not yet in the lobby list
           return { x: startX, y: getRoadCurve(startX) };
       }
 
@@ -117,7 +116,7 @@ export function RaceScreen({
        for (const id in opponents) {
            if (!interpolatedOpponents.current[id]) {
                const startPos = getStartingPosition(id);
-               const initialOpponentState = { ...opponents[id], x: startPos.x, y: startPos.y, angle: 0 };
+               const initialOpponentState = { ...opponents[id], x: startPos.x, y: startPos.y, angle: 0, lap: 1 };
                interpolatedOpponents.current[id] = { current: initialOpponentState, target: initialOpponentState };
            } else {
                interpolatedOpponents.current[id].target = opponents[id];
@@ -222,7 +221,7 @@ export function RaceScreen({
     ctx.save();
     ctx.beginPath(); ctx.roundRect(mapX, mapY, mapW, mapH, 10); ctx.clip();
     
-    const trackHeightRange = 3500;
+    const trackHeightRange = 2500;
     const scaleX = mapW / TRACK_LENGTH;
     const scaleY = mapH / trackHeightRange;
 
@@ -239,7 +238,7 @@ export function RaceScreen({
     }
     ctx.stroke();
 
-    const drawDot = (x: number, color: string, radius: number, hasBorder: boolean) => {
+    const drawDot = (x: number, y: number, lap: number, color: string, radius: number, hasBorder: boolean) => {
       const lapPos = ((x % TRACK_LENGTH) + TRACK_LENGTH) % TRACK_LENGTH;
       const mx = mapX + (lapPos * scaleX);
       const my = mapY + mapH/2 + (getRoadCurve(lapPos) - BASE_ROAD_Y) * scaleY;
@@ -248,10 +247,10 @@ export function RaceScreen({
       if (hasBorder) { ctx.strokeStyle = 'white'; ctx.lineWidth = 1; ctx.stroke(); }
     };
 
-    botsRef.current.forEach(b => drawDot(b.x || 0, '#d1d5db', 3, false));
-    Object.values(interpolatedOpponents.current).forEach(o => drawDot(o.current.x || 0, o.current.color, 4, true));
+    botsRef.current.forEach(b => drawDot(b.x || 0, b.y || 0, b.lap || 1, '#d1d5db', 3, false));
+    Object.values(interpolatedOpponents.current).forEach(o => drawDot(o.current.x || 0, o.current.y || 0, o.current.lap || 1, o.current.color, 4, true));
     if (!lapInfoRef.current.finished) {
-      drawDot(phys.current.x, playerCar.color, 6, true);
+      drawDot(phys.current.x, phys.current.y, lapInfoRef.current.current, playerCar.color, 6, true);
     }
     ctx.restore();
   };
@@ -403,16 +402,16 @@ export function RaceScreen({
     const i = inputs.current;
     
     const allRacersRaw = [
-      ...Object.values(interpolatedOpponents.current).map(o => ({...o.current, x: o.current.x || 0, isMe: o.current.id === userId})),
+      ...Object.values(interpolatedOpponents.current).map(o => ({...o.current, isMe: o.current.id === userId})),
       ...botsRef.current,
     ];
     if (!lapInfoRef.current.finished) {
-      allRacersRaw.push({ name: playerCar.name, id: userId, x: phys.current.x, isMe: true, color: playerCar.color, team: playerCar.team, ready: true } as Player);
+      allRacersRaw.push({ name: playerCar.name, id: userId, x: phys.current.x, y: phys.current.y, lap: lapInfoRef.current.current, isMe: true, color: playerCar.color, team: playerCar.team, ready: true } as Player);
     }
 
     const allRacers = allRacersRaw
         .filter((p, index, self) => p.id && self.findIndex(t => t.id === p.id) === index)
-        .sort((a, b) => (b.x || 0) - (a.x || 0));
+        .sort((a, b) => (b.lap || 1) - (a.lap || 1) || (b.x || 0) - (a.x || 0));
 
     
     const playerRank = allRacers.findIndex(r => r.id === userId);
@@ -470,7 +469,6 @@ export function RaceScreen({
       const currentRoadWidth = getRoadWidth(currentPosOnTrack);
       const carHalfHeight = 20;
       const gripModifier = p.tyreTemp > 95 ? 1 - (p.tyreTemp - 95) * 0.008 : 1;
-      const CAR_LENGTH = 70;
       
       if(assistEnabled) {
           p.y += (i.right ? LANE_SPEED : 0) + (i.left ? -LANE_SPEED : 0);
@@ -482,22 +480,18 @@ export function RaceScreen({
           let steeringInput = 0;
           if(i.left) steeringInput = -1;
           if(i.right) steeringInput = 1;
-
+          
           p.wheelAngle = steeringInput * STEERING_SENSITIVITY;
+
+          // Arcade-style turning
+          const turnFactor = p.speed / MAX_SPEED_NORMAL; // More turn at lower speed
+          const turnAngle = steeringInput * (0.04 * (1 - turnFactor * 0.7)) * gripModifier;
+          p.angle += turnAngle;
+          
           p.tyreTemp += Math.abs(steeringInput * p.speed * 0.005);
           
-          const frontWheelX = p.x + CAR_LENGTH / 2 * Math.cos(p.angle);
-          const frontWheelY = p.y + CAR_LENGTH / 2 * Math.sin(p.angle);
-          const backWheelX = p.x - CAR_LENGTH / 2 * Math.cos(p.angle);
-          const backWheelY = p.y - CAR_LENGTH / 2 * Math.sin(p.angle);
-          
-          const backWheelSpeed = p.speed * gripModifier;
-          
-          p.x += backWheelSpeed * Math.cos(p.angle);
-          p.y += backWheelSpeed * Math.sin(p.angle);
-          
-          const turnAngle = (backWheelSpeed / CAR_LENGTH) * Math.tan(p.wheelAngle);
-          p.angle += turnAngle;
+          p.x += p.speed * Math.cos(p.angle);
+          p.y += p.speed * Math.sin(p.angle);
       }
       
       p.collision = false;
@@ -736,10 +730,10 @@ export function RaceScreen({
       if (lapInfoRef.current.finished && allHumansFinished) {
           const finalLeaderboard = [
               ...Object.values(opponentsRef.current).map(o => ({...o, isMe: o.id === userId})),
-              { name: playerCar.name, x: phys.current.x, isMe: true, id: userId, color: playerCar.color, team: playerCar.team, ready: true, lap: lapInfo.total + 1 }
+              { name: playerCar.name, x: phys.current.x, y: phys.current.y, isMe: true, id: userId, color: playerCar.color, team: playerCar.team, ready: true, lap: lapInfoRef.current.current }
           ]
           .filter((p, i, a) => a.findIndex(t => (t.id === p.id)) === i)
-          .sort((a, b) => (b.lap || 0) - (a.lap || 0) || (b.x || 0) - (a.x || 0));
+          .sort((a,b) => (b.lap || 1) - (a.lap || 1) || (b.x || 0) - (a.x || 0));
 
           onRaceFinish(finalLeaderboard as Player[]);
           setRaceStatus('finished');
