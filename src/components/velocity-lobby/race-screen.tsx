@@ -55,11 +55,10 @@ export function RaceScreen({
   const gameActive = useRef(true);
   
   const getRoadCurve = useCallback((x: number) => {
-    const pos = (x % TRACK_LENGTH) / TRACK_LENGTH;
-    const sin1 = Math.sin(pos * Math.PI * 2) * 500;
-    const sin2 = Math.sin(pos * Math.PI * 4) * 250;
-    const sin3 = Math.sin(pos * Math.PI * 8) * 100;
-    return BASE_ROAD_Y + sin1 + sin2 + sin3;
+    const pos = x / 5000;
+    const sin1 = Math.sin(pos * Math.PI) * 1000;
+    const sin2 = Math.sin(pos * Math.PI * 2) * 500;
+    return BASE_ROAD_Y + sin1 + sin2;
   }, []);
 
   const getStartingPosition = useCallback((playerId: string) => {
@@ -284,8 +283,9 @@ export function RaceScreen({
     const arrowHeight = 20;
 
     for (let i = Math.floor(phys.current.x / 100) * 100 - 2000; i < phys.current.x + 3000; i += 150) {
-      const currentY = getRoadCurve(i);
-      const nextY = getRoadCurve(i + 50);
+      const pos_on_track = i % TRACK_LENGTH;
+      const currentY = getRoadCurve(pos_on_track);
+      const nextY = getRoadCurve((pos_on_track + 50) % TRACK_LENGTH);
       const angle = Math.atan2(nextY - currentY, 50);
 
       ctx.save();
@@ -326,14 +326,14 @@ export function RaceScreen({
     let i = Math.floor(phys.current.x / step) * step - 4000;
     const limit = phys.current.x + 4000;
 
-    const roadTopY = getRoadCurve(i) - getRoadWidth(i) / 2;
+    const roadTopY = getRoadCurve(i % TRACK_LENGTH) - getRoadWidth(i % TRACK_LENGTH) / 2;
     path.moveTo(i, roadTopY);
 
     for (i += step; i < limit; i += step) {
-      path.lineTo(i, getRoadCurve(i) - getRoadWidth(i) / 2);
+      path.lineTo(i, getRoadCurve(i % TRACK_LENGTH) - getRoadWidth(i % TRACK_LENGTH) / 2);
     }
     for (i -= step; i > phys.current.x - 4000; i -= step) {
-       path.lineTo(i, getRoadCurve(i) + getRoadWidth(i) / 2);
+       path.lineTo(i, getRoadCurve(i % TRACK_LENGTH) + getRoadWidth(i % TRACK_LENGTH) / 2);
     }
     path.closePath();
     ctx.fill(path);
@@ -347,19 +347,17 @@ export function RaceScreen({
     ctx.beginPath();
     for (let i = Math.floor(phys.current.x / 20) * 20 - 4000; i < phys.current.x + 4000; i += 20) {
       const currentX = i;
-      if (currentX < -2000 || currentX > TRACK_LENGTH + 2000) continue;
-      ctx.lineTo(i, getRoadCurve(i) - getRoadWidth(i) / 2);
+      ctx.lineTo(i, getRoadCurve(currentX % TRACK_LENGTH) - getRoadWidth(currentX % TRACK_LENGTH) / 2);
     }
     ctx.stroke();
     ctx.beginPath();
     for (let i = Math.floor(phys.current.x / 20) * 20 - 4000; i < phys.current.x + 4000; i += 20) {
       const currentX = i;
-      if (currentX < -2000 || currentX > TRACK_LENGTH + 2000) continue;
-      ctx.lineTo(i, getRoadCurve(i) + getRoadWidth(i) / 2);
+      ctx.lineTo(i, getRoadCurve(currentX % TRACK_LENGTH) + getRoadWidth(currentX % TRACK_LENGTH) / 2);
     }
     ctx.stroke();
     
-    if (phys.current.x > TRACK_LENGTH - 500 || phys.current.x < 500) {
+    if (Math.abs(phys.current.x % TRACK_LENGTH) < 500) {
         const startX = 0;
         drawCheckeredLine(ctx, startX, getRoadCurve(startX) - getRoadWidth(startX)/2, getRoadWidth(startX));
     }
@@ -387,7 +385,7 @@ export function RaceScreen({
 
   const respawnPlayer = useCallback(() => {
       const p = phys.current;
-      p.y = getRoadCurve(p.x);
+      p.y = getRoadCurve(p.x % TRACK_LENGTH);
       p.angle = 0;
       p.speed *= 0.5;
   }, [getRoadCurve]);
@@ -461,15 +459,15 @@ export function RaceScreen({
       p.tyreTemp -= 0.08;
       p.tyreTemp = Math.max(20, Math.min(p.tyreTemp, 120));
 
-      const roadCenterY = getRoadCurve(p.x);
-      const currentRoadWidth = getRoadWidth(p.x);
+      const roadCenterY = getRoadCurve(p.x % TRACK_LENGTH);
+      const currentRoadWidth = getRoadWidth(p.x % TRACK_LENGTH);
       const carHalfHeight = 20;
       const gripModifier = p.tyreTemp > 95 ? 1 - (p.tyreTemp - 95) * 0.008 : 1;
       const CAR_LENGTH = 70;
       
       if(assistEnabled) {
           p.y += (i.right ? LANE_SPEED : 0) + (i.left ? -LANE_SPEED : 0);
-          const roadSlope = (getRoadCurve(p.x + 1) - roadCenterY);
+          const roadSlope = (getRoadCurve((p.x + 1) % TRACK_LENGTH) - roadCenterY);
           p.angle = roadSlope * 0.5;
           p.wheelAngle = 0;
           p.x += p.speed;
@@ -586,13 +584,13 @@ export function RaceScreen({
 
         const botSpeed = (bot as any).speed || 0;
         const botY = bot.y || 0;
-        const idealY = getRoadCurve(botX) + ((bot as any).offsetY || 0);
+        const idealY = getRoadCurve(botX % TRACK_LENGTH) + ((bot as any).offsetY || 0);
 
         bot.y = botY + (idealY - botY) * 0.05;
         bot.x = botX + botSpeed;
 
         if (Math.random() < 0.005) {
-            (bot as any).offsetY = (Math.random() - 0.5) * (getRoadWidth(botX) - 60);
+            (bot as any).offsetY = (Math.random() - 0.5) * (getRoadWidth(botX % TRACK_LENGTH) - 60);
         }
         
         for(let j = index + 1; j < botsRef.current.length; j++) {
@@ -601,14 +599,14 @@ export function RaceScreen({
 
         if (Math.abs(p.x - botX) > 4000) {
             bot.x = p.x + (Math.random() > 0.5 ? 1 : -1) * (1000 + Math.random() * 500);
-            bot.y = getRoadCurve(bot.x);
+            bot.y = getRoadCurve(bot.x % TRACK_LENGTH);
         }
     });
 
     const lookAhead = 400 + p.speed * 10;
-    const yNow = getRoadCurve(p.x);
-    const yAhead = getRoadCurve(p.x + lookAhead);
-    const yFarAhead = getRoadCurve(p.x + lookAhead * 2);
+    const yNow = getRoadCurve(p.x % TRACK_LENGTH);
+    const yAhead = getRoadCurve((p.x + lookAhead) % TRACK_LENGTH);
+    const yFarAhead = getRoadCurve((p.x + lookAhead * 2) % TRACK_LENGTH);
 
     const delta1 = yAhead - yNow;
     const delta2 = yFarAhead - yAhead;

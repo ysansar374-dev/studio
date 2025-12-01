@@ -7,7 +7,7 @@ export const ACCELERATION = 0.08;
 export const FRICTION_ROAD = 0.99;
 export const WALL_BOUNCE = 0.6;
 export const LANE_SPEED = 5;
-export const TRACK_LENGTH = 15000; 
+export const TRACK_LENGTH = 5000 * Math.PI; // Approx 15708, ensures seamless loop for sin waves
 export const SYNC_INTERVAL = 100; // ms, for ~10 updates per second
 
 export const ROAD_WIDTH = 600; 
