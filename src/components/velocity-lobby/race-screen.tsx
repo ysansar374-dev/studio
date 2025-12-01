@@ -56,9 +56,10 @@ export function RaceScreen({
   const getRoadCurve = useCallback((x: number) => {
     const val = x || 0;
     // Wide, sweeping S-curves, generally moving downwards
-    let y = BASE_ROAD_Y + val * 0.05; 
-    y += Math.sin(val / 2500) * 1000; 
-    y += Math.cos(val / 1800) * 600; 
+    let y = BASE_ROAD_Y;
+    y += Math.sin(val / 2000) * 1200; // Large, wide curve
+    y += Math.cos(val / 1000) * 800; // Tighter curve
+    y += Math.sin(val / 500) * 200; // Small wiggles
     return y;
   }, []);
 
@@ -67,14 +68,14 @@ export function RaceScreen({
       const playerIndex = sortedPlayers.findIndex(p => p.id === playerId);
       
       if (playerIndex === -1) {
-          // Fallback for player not found (should not happen)
           return { x: 0, y: getRoadCurve(0) };
       }
 
       const numPlayers = sortedPlayers.length;
-      const laneWidth = 40; 
-      const gridDepth = 100;
+      const laneWidth = 60; // Increased spacing
+      const gridDepth = 120; // Increased spacing
 
+      // Staggered grid
       const column = playerIndex % 2; // 0 for left, 1 for right
       const row = Math.floor(playerIndex / 2);
 
@@ -132,7 +133,7 @@ export function RaceScreen({
    }, [opponents, getStartingPosition]);
 
    const getRoadWidth = useCallback((x: number) => {
-    return 800;
+    return 800 + Math.sin(x / 1500) * 200; // Dynamically changing width
   }, []);
   
 
@@ -230,11 +231,13 @@ export function RaceScreen({
     ctx.save();
     ctx.beginPath(); ctx.roundRect(mapX, mapY, mapW, mapH, 10); ctx.clip();
     const scaleX = mapW / TRACK_LENGTH;
-    const scaleY = 0.1;
+    const scaleY = 0.05; // Reduced vertical scale for a less dramatic map
+    const baseY = mapY + mapH / 2;
+
     ctx.beginPath(); ctx.strokeStyle = 'hsl(var(--muted-foreground))'; ctx.lineWidth = 4;
     for (let i = 0; i < TRACK_LENGTH; i += 200) {
       const mx = mapX + (i * scaleX);
-      const my = mapY + mapH / 2 + (getRoadCurve(i) - BASE_ROAD_Y) * scaleY;
+      const my = baseY + (getRoadCurve(i) - BASE_ROAD_Y) * scaleY;
       if (i === 0) ctx.moveTo(mx, my); else ctx.lineTo(mx, my);
     }
     ctx.stroke();
@@ -242,14 +245,16 @@ export function RaceScreen({
     const drawDot = (x: number, color: string, radius: number, hasBorder: boolean) => {
       const lapPos = ((x % TRACK_LENGTH) + TRACK_LENGTH) % TRACK_LENGTH;
       const mx = mapX + (lapPos * scaleX);
-      const my = mapY + mapH / 2 + (getRoadCurve(lapPos) - BASE_ROAD_Y) * scaleY;
+      const my = baseY + (getRoadCurve(lapPos) - BASE_ROAD_Y) * scaleY;
       ctx.beginPath(); ctx.arc(mx, my, radius, 0, Math.PI * 2); ctx.fillStyle = color; ctx.fill();
       if (hasBorder) { ctx.strokeStyle = 'white'; ctx.lineWidth = 1; ctx.stroke(); }
     };
 
     botsRef.current.forEach(b => drawDot(b.x || 0, '#d1d5db', 3, false));
     Object.values(interpolatedOpponents.current).forEach(o => drawDot(o.current.x || 0, o.current.color, 4, true));
-    drawDot(phys.current.x, playerCar.color, 6, true);
+    if (!lapInfoRef.current.finished) {
+      drawDot(phys.current.x, playerCar.color, 6, true);
+    }
     ctx.restore();
   };
 
@@ -347,7 +352,7 @@ export function RaceScreen({
     });
 
     // Draw player
-    if (!lapInfo.finished) {
+    if (!lapInfoRef.current.finished) {
       drawCar(ctx, phys.current.x, phys.current.y, playerCar.color, playerCar.name, drsState.active, inputs.current.brake, phys.current.wheelAngle, phys.current.angle, phys.current.x);
     }
     
@@ -357,7 +362,7 @@ export function RaceScreen({
     ctx.restore();
     
     drawMiniMap(ctx, screenW, screenH);
-  }, [getRoadCurve, getRoadWidth, drawCar, drawSparks, playerCar, drsState.active, userId, lapInfo.finished]);
+  }, [getRoadCurve, getRoadWidth, drawCar, drawSparks, playerCar, drsState.active, userId]);
 
 
   const loop = useCallback((time: number) => {
@@ -368,10 +373,15 @@ export function RaceScreen({
     
     // --- Leaderboard & Catch-up logic ---
     const allRacers = [
-      ...Object.values(interpolatedOpponents.current).map(o => o.current),
+      ...Object.values(interpolatedOpponents.current).map(o => ({...o.current, isMe: o.current.id === userId})),
       ...botsRef.current,
-      { name: playerCar.name, id: userId, x: phys.current.x, isMe: true }
-    ].sort((a, b) => (b.x || 0) - (a.x || 0));
+      // Player is now included via the interpolatedOpponents map
+    ].filter(r => r.id).sort((a, b) => (b.x || 0) - (a.x || 0));
+
+    if (!allRacers.find(r => r.id === userId) && !lapInfoRef.current.finished) {
+      allRacers.push({ name: playerCar.name, id: userId, x: phys.current.x, isMe: true } as Player);
+      allRacers.sort((a, b) => (b.x || 0) - (a.x || 0));
+    }
     
     const playerRank = allRacers.findIndex(r => r.id === userId);
     
@@ -379,7 +389,7 @@ export function RaceScreen({
     if (raceStatus === 'racing') {
         if (playerRank === 0 && allRacers.length > 1) { // Player is 1st
             speedModifier = 0.98; // 2% speed reduction
-        } else if (playerRank === allRacers.length - 1 && allRacers.length > 1) { // Player is last
+        } else if (playerRank === allRacers.length - 1 && allRacers.length > 1 && playerRank !== -1) { // Player is last
             speedModifier = 1.02; // 2% speed boost
         }
     }
@@ -491,27 +501,22 @@ export function RaceScreen({
               const pushX = (dx / distance) * overlap;
               const pushY = (dy / distance) * overlap;
               
-              racerA.x += pushX;
-              racerA.y += pushY;
-              racerB.x -= pushX;
-              racerB.y -= pushY;
+              if(racerA.id === userId) { p.x += pushX; p.y += pushY; } 
+              else { racerA.x += pushX; racerA.y += pushY; }
 
-              if (racerA.id === userId) {
+              if(racerB.id === userId) { p.x -= pushX; p.y -= pushY; }
+              else { racerB.x -= pushX; racerB.y -= pushY; }
+              
+
+              if (racerA.id === userId || racerB.id === userId) {
                   p.speed *= 0.9;
                   p.collision = true;
                   p.tyreTemp += 5;
                   createSparks(p.x - dx/2, p.y - dy/2, 15);
-              } else if (racerA.speed) {
-                  racerA.speed *= 0.95;
-              }
-              if (racerB.id === userId) {
-                  p.speed *= 0.9;
-                  p.collision = true;
-                  p.tyreTemp += 5;
-                  createSparks(p.x - dx/2, p.y - dy/2, 15);
-              } else if (racerB.speed) {
-                  racerB.speed *= 0.95;
-              }
+              } 
+              
+              if (racerA.speed) racerA.speed *= 0.95;
+              if (racerB.speed) racerB.speed *= 0.95;
           }
       }
 
@@ -544,19 +549,6 @@ export function RaceScreen({
         if (newLap > prev.current) {
             if (newLap > prev.total) {
                 // Player finishes the race
-                const finalLeaderboard = [
-                    ...Object.values(opponentsRef.current),
-                    ...botsRef.current,
-                    { name: playerCar.name, x: phys.current.x, isMe: true, id: userId, color: playerCar.color, team: playerCar.team, ready: true }
-                ].sort((a, b) => (b.x || 0) - (a.x || 0));
-                
-                const allOpponentsFinished = Object.values(opponentsRef.current).every(opp => (opp.lap || 0) > lapInfo.total);
-
-                if (allOpponentsFinished) {
-                    onRaceFinish(finalLeaderboard as Player[]);
-                    gameActive.current = false;
-                    setRaceStatus('finished');
-                }
                 return { ...prev, finished: true };
             } else {
                 return { ...prev, current: newLap };
@@ -607,7 +599,7 @@ export function RaceScreen({
     
     draw();
     requestRef.current = requestAnimationFrame(loop);
-  }, [draw, getRoadCurve, getRoadWidth, playerCar, setLapInfo, syncMultiplayer, assistEnabled, onRaceFinish, raceStatus, userId, lapInfo.total]);
+  }, [draw, getRoadCurve, getRoadWidth, playerCar, setLapInfo, syncMultiplayer, assistEnabled, raceStatus, userId]);
 
 
   const addBot = () => {
@@ -660,7 +652,8 @@ export function RaceScreen({
     handleResize();
 
     const hD = (e: KeyboardEvent) => {
-      if (raceStatus !== 'racing' || lapInfoRef.current.finished) return;
+      if (lapInfoRef.current.finished) return; // Disable controls after finishing
+      if (raceStatus !== 'racing') return;
       const key = e.key.toLowerCase();
       if (key === 'w') inputs.current.gas = true;
       if (key === 's') inputs.current.brake = true;
@@ -685,22 +678,26 @@ export function RaceScreen({
     requestRef.current = requestAnimationFrame(loop);
 
     const finishCheckInterval = setInterval(() => {
-        if (raceStatus !== 'racing' || !gameActive.current) return;
-        
-        const allHumansFinished = Object.values(opponentsRef.current).every(opp => (opp.lap || 0) > lapInfo.total) && lapInfoRef.current.finished;
+      if (!gameActive.current) {
+        clearInterval(finishCheckInterval);
+        return;
+      }
+      
+      const allHumansFinished = Object.values(opponentsRef.current).every(opp => (opp.lap || 0) > lapInfo.total);
 
-        if (allHumansFinished) {
-            const finalLeaderboard = [
-                ...Object.values(opponentsRef.current),
-                ...botsRef.current,
-                { name: playerCar.name, x: phys.current.x, isMe: true, id: userId, color: playerCar.color, team: playerCar.team, ready: true }
-            ].sort((a, b) => (b.x || 0) - (a.x || 0));
+      if (lapInfoRef.current.finished && allHumansFinished) {
+          const finalLeaderboard = [
+              ...Object.values(opponentsRef.current).map(o => ({...o, isMe: o.id === userId})),
+              { name: playerCar.name, x: phys.current.x, isMe: true, id: userId, color: playerCar.color, team: playerCar.team, ready: true, lap: lapInfo.total + 1 }
+          ]
+          .filter((p, i, a) => a.findIndex(t => (t.id === p.id)) === i) // Unique players
+          .sort((a, b) => (b.lap || 0) - (a.lap || 0) || (b.x || 0) - (a.x || 0));
 
-            onRaceFinish(finalLeaderboard as Player[]);
-            gameActive.current = false;
-            setRaceStatus('finished');
-        }
-
+          onRaceFinish(finalLeaderboard as Player[]);
+          gameActive.current = false;
+          setRaceStatus('finished');
+          clearInterval(finishCheckInterval);
+      }
     }, 2000);
 
 
@@ -712,7 +709,7 @@ export function RaceScreen({
       gameActive.current = false;
       if (requestRef.current) cancelAnimationFrame(requestRef.current);
     };
-  }, [loop, quitRace, triggerRaceEngineer, drsState, raceStatus, lapInfo.total, onRaceFinish, playerCar, userId]);
+  }, [loop, quitRace, triggerRaceEngineer, drsState, raceStatus, onRaceFinish, playerCar, userId, lapInfo.total]);
 
   const getTyreTempColor = (temp: number) => {
     if (temp > 105) return 'bg-red-600';
@@ -750,7 +747,7 @@ export function RaceScreen({
         <div className="flex flex-col gap-2">
           <div className="bg-card/80 backdrop-blur text-white p-4 sm:p-6 rounded-br-3xl border-l-8 border-accent min-w-[200px] sm:min-w-[240px]">
             <div className="font-black italic leading-none tracking-tighter text-5xl sm:text-7xl font-headline">
-              {Math.floor(phys.current.speed * 10)} <span className="text-xl sm:text-2xl not-italic font-bold text-muted-foreground">KM/H</span>
+              {lapInfoRef.current.finished ? 'FINISH' : Math.floor(phys.current.speed * 10)} <span className="text-xl sm:text-2xl not-italic font-bold text-muted-foreground">{!lapInfoRef.current.finished && 'KM/H'}</span>
             </div>
           </div>
           <div className="bg-card/80 p-3 rounded-r-xl flex items-center gap-3 w-56 sm:w-72 backdrop-blur">
@@ -778,16 +775,19 @@ export function RaceScreen({
         
         {/* Leaderboard */}
         <div className="hidden md:block bg-card/70 backdrop-blur p-4 rounded-xl text-white w-72 border">
-            <div className="flex items-center justify-between mb-3 border-b pb-2"><span className="font-bold text-xs text-muted-foreground">PİLOT</span><span className="font-bold text-xs text-muted-foreground">FARK (M)</span></div>
+            <div className="flex items-center justify-between mb-3 border-b pb-2"><span className="font-bold text-xs text-muted-foreground">PİLOT</span><span className="font-bold text-xs text-muted-foreground">FARK</span></div>
             <div className="space-y-2 font-code text-sm">
-                 {leaderboardData.slice(0, 6).map((d, i) => {
+                 {leaderboardData.slice(0, 10).map((d, i) => {
                      const leaderX = leaderboardData[0]?.x || 0;
+                     const isPlayerFinished = lapInfoRef.current.finished;
+                     const isThisRacerMe = d.id === userId;
+
                      return (
-                        <div key={d.id || i} className={`flex justify-between items-center p-1 rounded group ${d.id === userId ? 'bg-accent/20 text-accent font-bold border-l-2 border-accent' : 'text-foreground'}`}>
+                        <div key={d.id || i} className={`flex justify-between items-center p-1 rounded group ${(isThisRacerMe && !isPlayerFinished) ? 'bg-accent/20 text-accent font-bold border-l-2 border-accent' : 'text-foreground'}`}>
                             <div className="flex items-center gap-2"><span className="text-muted-foreground w-4">{i + 1}</span><span className="truncate w-24">{d.name}</span></div>
                             <div className="flex items-center gap-2">
-                              <span className={i === 0 ? 'text-green-400' : 'text-red-400'}>{i === 0 ? 'LİDER' : `+${Math.floor((leaderX - (d.x || 0)) / 10)}m`}</span>
-                              {isAdmin && d.id !== userId && d.id && !d.id.startsWith('bot_') && (
+                              <span className={i === 0 ? 'text-green-400' : 'text-red-400'}>{i === 0 ? 'LİDER' : `+${Math.floor((leaderX - (d.x || 0)))}m`}</span>
+                              {isAdmin && !isThisRacerMe && d.id && !d.id.startsWith('bot_') && (
                                 <Button
                                   size="icon"
                                   variant="destructive"

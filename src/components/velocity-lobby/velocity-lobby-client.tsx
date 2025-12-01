@@ -185,7 +185,6 @@ export default function VelocityLobbyClient() {
         if (playerCar.name === 'Pilot' || playerCar.name.startsWith('Pilot ')) {
             const randomName = `Pilot ${u.uid.slice(0, 4)}`;
             setPlayerCar(p => ({ ...p, name: randomName }));
-            generateTeamName(randomName); // Also generate a team name on initial load
         }
       } else {
         setUser(null);
@@ -193,7 +192,7 @@ export default function VelocityLobbyClient() {
       }
     });
     return () => unsub();
-  }, [config.checked, config.config, toast, getFirebase, generateTeamName, playerCar.name]);
+  }, [config.checked, config.config, toast, getFirebase, playerCar.name]);
 
   const quitRace = useCallback(() => {
     setGameState('menu');
@@ -250,9 +249,8 @@ export default function VelocityLobbyClient() {
       }
       
       setLobbyPlayers(players);
-      if (gameState === 'race') {
-        setOpponents(opps);
-      }
+      setOpponents(opps);
+
     });
 
     return () => {

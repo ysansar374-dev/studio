@@ -12,7 +12,6 @@ type FinishedScreenProps = {
 };
 
 export function FinishedScreen({ playerCar, setGameState, leaderboard }: FinishedScreenProps) {
-  const playerPosition = leaderboard.findIndex(p => p.isMe) + 1;
   const sortedLeaderboard = leaderboard.sort((a,b) => (b.x || 0) - (a.x || 0));
   const playerResult = sortedLeaderboard.find(p => p.isMe);
   const playerRank = sortedLeaderboard.findIndex(p => p.isMe) + 1;
@@ -38,7 +37,7 @@ export function FinishedScreen({ playerCar, setGameState, leaderboard }: Finishe
                     <div className="w-5 h-5 rounded-full border border-white/20" style={{backgroundColor: player.color}}></div>
                     <span className="font-bold">{player.name}</span>
                   </div>
-                   <span className="font-code text-sm text-muted-foreground">{index === 0 ? 'LİDER' : `+${((sortedLeaderboard[0].x || 0) - (player.x || 0)).toFixed(0)}m`}</span>
+                   <span className="font-code text-sm text-muted-foreground">{index === 0 ? 'KAZANAN' : `+${((sortedLeaderboard[0].x || 0) - (player.x || 0)).toFixed(0)}m`}</span>
                 </div>
               ))}
             </div>
